@@ -1,0 +1,46 @@
+{
+  "name": "discord-activity-starter",
+  "private": true,
+  "version": "0.1.0",
+  "description": "A minimal starter project using embedded-app-sdk",
+  "main": "index.js",
+  "scripts": {
+    "dev": "pnpm --parallel run dev",
+    "tunnel": "cloudflared tunnel --url http://localhost:3000",
+    "test:frontend": "cd client && vitest run",
+    "test:backend": "cd server && vitest run",
+    "test": "npm run test:frontend && npm run test:backend",
+    "test:watch": "npm run test:client -- --watch && npm run test:server -- --watch",
+    "lint:frontend": "cd client && eslint src --max-warnings 0",
+    "lint:backend": "cd server && eslint src --max-warnings 0",
+    "lint:fix": "npm run lint:frontend -- --fix && npm run lint:backend -- --fix"
+  },
+  "author": "Discord",
+  "license": "MIT",
+  "dependencies": {
+    "express": "^4.19.2",
+    "pnpm": "^10.25.0"
+  },
+  "type": "module",
+  "devDependencies": {
+    "@eslint/eslintrc": "^3.3.3",
+    "@eslint/js": "^9.39.1",
+    "@types/express": "^5.0.0",
+    "@types/node": "^22.0.0",
+    "@types/supertest": "^6.0.3",
+    "@typescript-eslint/eslint-plugin": "^8.49.0",
+    "@typescript-eslint/parser": "^8.49.0",
+    "@vitest/ui": "^4.0.15",
+    "eslint": "^9.39.1",
+    "globals": "^16.5.0",
+    "jsdom": "^27.3.0",
+    "nodemon": "^3.1.0",
+    "npm-run-all2": "^7.0.0",
+    "rimraf": "^6.0.0",
+    "supertest": "^7.1.4",
+    "ts-node": "^10.9.1",
+    "typescript": "~5.9.0",
+    "typescript-eslint": "^8.49.0",
+    "vitest": "^4.0.15"
+  }
+}
