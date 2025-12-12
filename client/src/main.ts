@@ -1,5 +1,5 @@
 import type { CommandResponse } from "@discord/embedded-app-sdk";
-import "./style.css";
+import "../style.css";
 import { discordSdk } from "./discordSdk";
 import rocketLogo from "/logo.png";
 
