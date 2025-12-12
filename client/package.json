@@ -12,6 +12,6 @@
     "@discord/embedded-app-sdk": "^2.0.0"
   },
   "devDependencies": {
-    "vite": "^5.2.9"
+    "vite": "^7.2.7"
   }
 }
