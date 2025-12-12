@@ -18,7 +18,7 @@
   "author": "Discord",
   "license": "MIT",
   "dependencies": {
-    "express": "^4.19.2",
+    "express": "^5.2.1",
     "pnpm": "^10.25.0"
   },
   "type": "module",
