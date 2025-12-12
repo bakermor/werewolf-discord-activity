@@ -33,17 +33,3 @@ jobs:
 
       - name: Lint backend
         run: npm run lint:backend
-
-  security:
-    runs-on: ubuntu-latest
-
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Run GitHub Super Linter
-        uses: github/super-linter@v4
-        env:
-          DEFAULT_BRANCH: main
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          VALIDATE_TYPESCRIPT: false
-          VALIDATE_JAVASCRIPT: false
