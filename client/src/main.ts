@@ -12,49 +12,55 @@ setupDiscordSdk().then(() => {
 });
 
 export async function setupDiscordSdk() {
-  await discordSdk.ready();
+  try {
+    await discordSdk.ready();
 
-  // Authorize with Discord Client
-  const clientId = import.meta.env.VITE_DISCORD_CLIENT_ID;
+    const clientId = import.meta.env.VITE_DISCORD_CLIENT_ID;
+    if (!clientId) {
+      throw new Error("Discord Client ID not found in environment variables");
+    }
 
-  const response = await discordSdk.commands.authorize({
-    client_id: clientId,
-    response_type: "code",
-    state: "",
-    prompt: "none",
-    scope: ["identify"],
-  });
+    const { code } = await discordSdk.commands.authorize({
+      client_id: clientId,
+      response_type: "code",
+      state: "",
+      prompt: "none",
+      scope: ["identify"],
+    });
+    if (!code) {
+      throw new Error("No authorization code received from Discord");
+    }
 
-  if (!response || !response.code) {
-    throw new Error("Invalid authorize response: missing code");
-  }
-  const { code } = response;
+    // Retrieve an access_token from your activity's server
+    const response = await fetch("/api/token", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        code,
+      }),
+    });
+    if (!response.ok) {
+      throw new Error(`Token endpoint returned ${response.status}`);
+    }
 
-  // Retrieve an access_token from your activity's server
-  const token = await fetch("/api/token", {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify({
-      code,
-    }),
-  });
+    const { access_token } = await response.json();
+    if (!access_token) {
+      throw new Error("No access token returned from token endpoint");
+    }
 
-  const data = (await token.json()) as { access_token?: string };
-  if (!data.access_token) {
-    throw new Error("Invalid response: missing access_token");
-  }
-
-  const { access_token } = data;
-
-  // Authenticate with Discord client (using the access_token)
-  auth = await discordSdk.commands.authenticate({
-    access_token,
-  });
-
-  if (auth == null) {
-    throw new Error("Authenticate command failed");
+    // Authenticate with Discord client (using the access_token)
+    auth = await discordSdk.commands.authenticate({
+      access_token,
+    });
+    if (auth == null) {
+      throw new Error("Authenticate command failed");
+    }
+    return auth;
+  } catch (error) {
+    console.error("Discord SDK setup failed:", error);
+    throw error;
   }
 }
 
