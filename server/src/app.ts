@@ -14,14 +14,30 @@ const port: number = Number(process.env.PORT) || 3001;
 
 app.use(express.json());
 
+// Player interface
+interface Player {
+  userId: string;
+  username: string;
+  avatar: string;
+}
+
 // Lobby state type
 interface LobbyState {
   instanceId: string;
   createdAt: Date;
+  players: Player[];
 }
 
 // In-memory store for lobbies: Map<instanceId, LobbyState>
 const lobbies = new Map<string, LobbyState>();
+
+// Helper function to add a player to a lobby, preventing duplicates by userId
+function addPlayerToLobby(lobby: LobbyState, player: Player): void {
+  const playerExists = lobby.players.some((p) => p.userId === player.userId);
+  if (!playerExists) {
+    lobby.players.push(player);
+  }
+}
 
 if (process.env.NODE_ENV === "production") {
   const clientBuildPath = path.join(__dirname, "../../client/dist");
@@ -70,33 +86,48 @@ app.post("/api/token", async (req: Request, res: Response) => {
 // Lobby initialization endpoint
 app.post("/api/lobby", async (req: Request, res: Response) => {
   try {
-    const { instanceId } = req.body;
+    const { instanceId, userId, username, avatar } = req.body;
 
     // Validate instanceId
-    if (!instanceId || typeof instanceId !== "string" || instanceId.trim() === "") {
+    if (
+      !instanceId ||
+      typeof instanceId !== "string" ||
+      instanceId.trim() === ""
+    ) {
       return res.status(400).send({ error: "Missing or invalid instanceId" });
     }
 
-    // Check if lobby already exists
-    const existingLobby = lobbies.get(instanceId);
-    if (existingLobby) {
-      return res.send({
-        instanceId: existingLobby.instanceId,
-        createdAt: existingLobby.createdAt.toISOString(),
-      });
+    // Validate player data
+    if (!userId || typeof userId !== "string" || userId.trim() === "") {
+      return res.status(400).send({ error: "Missing or invalid userId" });
+    }
+    if (!username || typeof username !== "string" || username.trim() === "") {
+      return res.status(400).send({ error: "Missing or invalid username" });
+    }
+    if (avatar === null || avatar === undefined || typeof avatar !== "string") {
+      return res.status(400).send({ error: "Missing or invalid avatar" });
     }
 
-    // Create new lobby
-    const newLobby: LobbyState = {
-      instanceId,
-      createdAt: new Date(),
-    };
+    // Check if lobby already exists
+    let lobby = lobbies.get(instanceId);
+    if (!lobby) {
+      // Create new lobby with empty players array
+      lobby = {
+        instanceId,
+        createdAt: new Date(),
+        players: [],
+      };
+      lobbies.set(instanceId, lobby);
+    }
 
-    lobbies.set(instanceId, newLobby);
+    // Add player to lobby (deduped by userId)
+    const player: Player = { userId, username, avatar };
+    addPlayerToLobby(lobby, player);
 
     return res.send({
-      instanceId: newLobby.instanceId,
-      createdAt: newLobby.createdAt.toISOString(),
+      instanceId: lobby.instanceId,
+      createdAt: lobby.createdAt.toISOString(),
+      players: lobby.players,
     });
   } catch (error) {
     console.error("Lobby initialization failed:", error);
