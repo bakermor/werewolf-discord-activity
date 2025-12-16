@@ -49,6 +49,7 @@ describe("setupDiscordSdk", () => {
         user: {
           id: "123",
           username: "testuser",
+          avatar: "https://example.com/avatar.png",
           discriminator: "0001",
           public_flags: 0,
         },
@@ -64,10 +65,26 @@ describe("setupDiscordSdk", () => {
       vi.mocked(discordSdk.commands.authorize).mockResolvedValue({
         code: mockCode,
       });
-      mockFetch.mockResolvedValue({
-        ok: true,
-        json: () => Promise.resolve({ access_token: mockAccessToken }),
-      });
+      const mockLobby = {
+        instanceId: "test-instance-id",
+        createdAt: new Date().toISOString(),
+        players: [
+          {
+            userId: "123",
+            username: "testuser",
+            avatar: "https://example.com/avatar.png",
+          },
+        ],
+      };
+      mockFetch
+        .mockResolvedValueOnce({
+          ok: true,
+          json: () => Promise.resolve({ access_token: mockAccessToken }),
+        })
+        .mockResolvedValueOnce({
+          ok: true,
+          json: () => Promise.resolve(mockLobby),
+        });
       vi.mocked(discordSdk.commands.authenticate).mockResolvedValue(mockAuth);
 
       const result = await setupDiscordSdk();
@@ -81,17 +98,147 @@ describe("setupDiscordSdk", () => {
         prompt: "none",
         scope: ["identify"],
       });
-      expect(mockFetch).toHaveBeenCalledWith("/api/token", {
+
+      // Verify /api/token call
+      expect(mockFetch).toHaveBeenNthCalledWith(1, "/api/token", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
         },
         body: JSON.stringify({ code: mockCode }),
       });
+
+      // Verify /api/lobby call with user metadata
+      expect(mockFetch).toHaveBeenNthCalledWith(2, "/api/lobby", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          instanceId: "test-instance-id",
+          userId: "123",
+          username: "testuser",
+          avatar: "https://example.com/avatar.png",
+        }),
+      });
+
       expect(discordSdk.commands.authenticate).toHaveBeenCalledWith({
         access_token: mockAccessToken,
       });
       expect(result).toEqual(mockAuth);
+    });
+
+    it("extracts user metadata and sends it to /api/lobby", async () => {
+      const mockAuth = {
+        access_token: mockAccessToken,
+        user: {
+          id: "user-456",
+          username: "anotheruser",
+          avatar: "https://example.com/user456.png",
+          discriminator: "0002",
+          public_flags: 0,
+        },
+        scopes: ["identify" as const],
+        expires: "2025-12-15T20:00:00.000Z",
+        application: {
+          id: "app-123",
+          name: "Test App",
+          description: "A test Discord app",
+        },
+      };
+      vi.mocked(discordSdk.ready).mockResolvedValue(undefined);
+      vi.mocked(discordSdk.commands.authorize).mockResolvedValue({
+        code: mockCode,
+      });
+      mockFetch
+        .mockResolvedValueOnce({
+          ok: true,
+          json: () => Promise.resolve({ access_token: mockAccessToken }),
+        })
+        .mockResolvedValueOnce({
+          ok: true,
+          json: () =>
+            Promise.resolve({
+              instanceId: "test-instance-id",
+              createdAt: new Date().toISOString(),
+              players: [
+                {
+                  userId: "user-456",
+                  username: "anotheruser",
+                  avatar: "https://example.com/user456.png",
+                },
+              ],
+            }),
+        });
+      vi.mocked(discordSdk.commands.authenticate).mockResolvedValue(mockAuth);
+
+      await setupDiscordSdk();
+
+      // Verify /api/lobby was called with correct user data
+      expect(mockFetch).toHaveBeenNthCalledWith(2, "/api/lobby", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          instanceId: "test-instance-id",
+          userId: "user-456",
+          username: "anotheruser",
+          avatar: "https://example.com/user456.png",
+        }),
+      });
+    });
+
+    it("handles missing avatar by sending empty string", async () => {
+      const mockAuth = {
+        access_token: mockAccessToken,
+        user: {
+          id: "user-789",
+          username: "noavataruser",
+          avatar: null,
+          discriminator: "0003",
+          public_flags: 0,
+        },
+        scopes: ["identify" as const],
+        expires: "2025-12-15T20:00:00.000Z",
+        application: {
+          id: "app-123",
+          name: "Test App",
+          description: "A test Discord app",
+        },
+      };
+      vi.mocked(discordSdk.ready).mockResolvedValue(undefined);
+      vi.mocked(discordSdk.commands.authorize).mockResolvedValue({
+        code: mockCode,
+      });
+      mockFetch
+        .mockResolvedValueOnce({
+          ok: true,
+          json: () => Promise.resolve({ access_token: mockAccessToken }),
+        })
+        .mockResolvedValueOnce({
+          ok: true,
+          json: () =>
+            Promise.resolve({
+              instanceId: "test-instance-id",
+              createdAt: new Date().toISOString(),
+              players: [
+                {
+                  userId: "user-789",
+                  username: "noavataruser",
+                  avatar: "",
+                },
+              ],
+            }),
+        });
+      vi.mocked(discordSdk.commands.authenticate).mockResolvedValue(mockAuth);
+
+      await setupDiscordSdk();
+
+      // Verify avatar is sent as empty string when null
+      const secondCall = mockFetch.mock.calls[1];
+      const body = JSON.parse(secondCall[1].body as string);
+      expect(body.avatar).toBe("");
     });
   });
 
@@ -179,6 +326,34 @@ describe("setupDiscordSdk", () => {
 
       await expect(setupDiscordSdk()).rejects.toThrow(
         "Authenticate command failed"
+      );
+    });
+
+    it("throws error when auth.user is missing", async () => {
+      const mockAuthNoUser = {
+        access_token: mockAccessToken,
+        scopes: ["identify" as const],
+        expires: "2025-12-15T20:00:00.000Z",
+        application: {
+          id: "app-123",
+          name: "Test App",
+          description: "A test Discord app",
+        },
+      };
+      vi.mocked(discordSdk.ready).mockResolvedValue(undefined);
+      vi.mocked(discordSdk.commands.authorize).mockResolvedValue({
+        code: mockCode,
+      });
+      mockFetch.mockResolvedValue({
+        ok: true,
+        json: () => Promise.resolve({ access_token: mockAccessToken }),
+      });
+      vi.mocked(discordSdk.commands.authenticate).mockResolvedValue(
+        mockAuthNoUser as never
+      );
+
+      await expect(setupDiscordSdk()).rejects.toThrow(
+        "User information not available from authentication"
       );
     });
 

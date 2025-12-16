@@ -58,12 +58,18 @@ export async function setupDiscordSdk() {
       throw new Error("Authenticate command failed");
     }
 
-    // Initialize lobby with instanceId
+    // Extract user metadata from auth response
+    if (!auth.user) {
+      throw new Error("User information not available from authentication");
+    }
+
+    // Initialize lobby with instanceId and user metadata
     const instanceId = discordSdk.instanceId;
     if (!instanceId) {
       throw new Error("Discord SDK instanceId not available");
     }
 
+    const { user } = auth;
     const lobbyResponse = await fetch("/api/lobby", {
       method: "POST",
       headers: {
@@ -71,6 +77,9 @@ export async function setupDiscordSdk() {
       },
       body: JSON.stringify({
         instanceId,
+        userId: user.id,
+        username: user.username,
+        avatar: user.avatar || "",
       }),
     });
 
