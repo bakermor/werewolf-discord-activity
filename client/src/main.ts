@@ -57,6 +57,30 @@ export async function setupDiscordSdk() {
     if (auth == null) {
       throw new Error("Authenticate command failed");
     }
+
+    // Initialize lobby with instanceId
+    const instanceId = discordSdk.instanceId;
+    if (!instanceId) {
+      throw new Error("Discord SDK instanceId not available");
+    }
+
+    const lobbyResponse = await fetch("/api/lobby", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        instanceId,
+      }),
+    });
+
+    if (!lobbyResponse.ok) {
+      throw new Error(`Lobby endpoint returned ${lobbyResponse.status}`);
+    }
+
+    const lobby = await lobbyResponse.json();
+    console.log("Lobby initialized:", lobby);
+
     return auth;
   } catch (error) {
     console.error("Discord SDK setup failed:", error);

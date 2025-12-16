@@ -6,6 +6,7 @@ vi.stubGlobal("fetch", mockFetch);
 vi.mock("../discordSdk", () => ({
   discordSdk: {
     ready: vi.fn().mockResolvedValue(undefined),
+    instanceId: "test-instance-id",
     commands: {
       authorize: vi.fn().mockResolvedValue({ code: "initial-code" }),
       authenticate: vi
@@ -95,6 +96,23 @@ describe("setupDiscordSdk", () => {
   });
 
   describe("error handling", () => {
+    const mockAuth = {
+      access_token: mockAccessToken,
+      user: {
+        id: "123",
+        username: "testuser",
+        discriminator: "0001",
+        public_flags: 0,
+      },
+      scopes: ["identify" as const],
+      expires: "2025-12-15T20:00:00.000Z",
+      application: {
+        id: "app-123",
+        name: "Test App",
+        description: "A test Discord app",
+      },
+    };
+
     it("throws error when Discord Client ID is missing", async () => {
       vi.unstubAllEnvs();
       vi.stubEnv("VITE_DISCORD_CLIENT_ID", "");
@@ -192,6 +210,73 @@ describe("setupDiscordSdk", () => {
       mockFetch.mockRejectedValue(networkError);
 
       await expect(setupDiscordSdk()).rejects.toThrow("Network request failed");
+    });
+
+    it("throws error when instanceId is not available", async () => {
+      vi.mocked(discordSdk.ready).mockResolvedValue(undefined);
+      vi.mocked(discordSdk.commands.authorize).mockResolvedValue({
+        code: mockCode,
+      });
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        json: () => Promise.resolve({ access_token: mockAccessToken }),
+      });
+      vi.mocked(discordSdk.commands.authenticate).mockResolvedValue(mockAuth);
+
+      // Temporarily remove instanceId
+      const originalInstanceId = discordSdk.instanceId;
+      Object.defineProperty(discordSdk, "instanceId", {
+        value: undefined,
+        configurable: true,
+      });
+
+      await expect(setupDiscordSdk()).rejects.toThrow(
+        "Discord SDK instanceId not available"
+      );
+
+      // Restore original instanceId
+      Object.defineProperty(discordSdk, "instanceId", {
+        value: originalInstanceId,
+        configurable: true,
+      });
+    });
+
+    it("throws error when lobby endpoint returns non-ok status", async () => {
+      vi.mocked(discordSdk.ready).mockResolvedValue(undefined);
+      vi.mocked(discordSdk.commands.authorize).mockResolvedValue({
+        code: mockCode,
+      });
+      mockFetch
+        .mockResolvedValueOnce({
+          ok: true,
+          json: () => Promise.resolve({ access_token: mockAccessToken }),
+        })
+        .mockResolvedValueOnce({
+          ok: false,
+          status: 400,
+        });
+      vi.mocked(discordSdk.commands.authenticate).mockResolvedValue(mockAuth);
+
+      await expect(setupDiscordSdk()).rejects.toThrow(
+        "Lobby endpoint returned 400"
+      );
+    });
+
+    it("throws error when lobby endpoint network request fails", async () => {
+      vi.mocked(discordSdk.ready).mockResolvedValue(undefined);
+      vi.mocked(discordSdk.commands.authorize).mockResolvedValue({
+        code: mockCode,
+      });
+      const networkError = new Error("Lobby network error");
+      mockFetch
+        .mockResolvedValueOnce({
+          ok: true,
+          json: () => Promise.resolve({ access_token: mockAccessToken }),
+        })
+        .mockRejectedValueOnce(networkError);
+      vi.mocked(discordSdk.commands.authenticate).mockResolvedValue(mockAuth);
+
+      await expect(setupDiscordSdk()).rejects.toThrow("Lobby network error");
     });
   });
 });

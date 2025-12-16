@@ -14,6 +14,15 @@ const port: number = Number(process.env.PORT) || 3001;
 
 app.use(express.json());
 
+// Lobby state type
+interface LobbyState {
+  instanceId: string;
+  createdAt: Date;
+}
+
+// In-memory store for lobbies: Map<instanceId, LobbyState>
+const lobbies = new Map<string, LobbyState>();
+
 if (process.env.NODE_ENV === "production") {
   const clientBuildPath = path.join(__dirname, "../../client/dist");
   app.use(express.static(clientBuildPath));
@@ -55,6 +64,43 @@ app.post("/api/token", async (req: Request, res: Response) => {
   } catch (error) {
     console.error("Token exchange failed:", error);
     res.status(500).send({ error: "Failed to exchange token" });
+  }
+});
+
+// Lobby initialization endpoint
+app.post("/api/lobby", async (req: Request, res: Response) => {
+  try {
+    const { instanceId } = req.body;
+
+    // Validate instanceId
+    if (!instanceId || typeof instanceId !== "string" || instanceId.trim() === "") {
+      return res.status(400).send({ error: "Missing or invalid instanceId" });
+    }
+
+    // Check if lobby already exists
+    const existingLobby = lobbies.get(instanceId);
+    if (existingLobby) {
+      return res.send({
+        instanceId: existingLobby.instanceId,
+        createdAt: existingLobby.createdAt.toISOString(),
+      });
+    }
+
+    // Create new lobby
+    const newLobby: LobbyState = {
+      instanceId,
+      createdAt: new Date(),
+    };
+
+    lobbies.set(instanceId, newLobby);
+
+    return res.send({
+      instanceId: newLobby.instanceId,
+      createdAt: newLobby.createdAt.toISOString(),
+    });
+  } catch (error) {
+    console.error("Lobby initialization failed:", error);
+    res.status(500).send({ error: "Failed to initialize lobby" });
   }
 });
 
