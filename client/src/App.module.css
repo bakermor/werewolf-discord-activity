@@ -15,3 +15,81 @@
 .logo:hover {
   filter: drop-shadow(0 0 2em #646cffaa);
 }
+
+.lobbyHeader {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.5rem;
+  margin-bottom: 2rem;
+}
+
+.lobbyHeader h1 {
+  margin: 0;
+  font-size: 2rem;
+  font-weight: 600;
+}
+
+.playerCount {
+  margin: 0;
+  font-size: 1rem;
+  color: #888;
+  font-weight: 500;
+}
+
+.playersList {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+  align-items: center;
+  width: 100%;
+  max-width: 400px;
+  margin: 0 auto;
+}
+
+.playerItem {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  padding: 1rem;
+  border-radius: 0.5rem;
+  background: rgba(255, 255, 255, 0.05);
+  width: 100%;
+  transition: background 200ms ease;
+}
+
+.playerItem:hover {
+  background: rgba(255, 255, 255, 0.1);
+}
+
+.playerAvatar {
+  width: 3rem;
+  height: 3rem;
+  border-radius: 50%;
+  object-fit: cover;
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  color: white;
+  font-weight: bold;
+  font-size: 1.25rem;
+}
+
+.playerName {
+  font-size: 1rem;
+  font-weight: 500;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  flex: 1;
+  text-align: left;
+}
+
+.emptyState {
+  margin-top: 2rem;
+  font-size: 1rem;
+  color: #888;
+  font-style: italic;
+}
