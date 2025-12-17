@@ -1,5 +1,7 @@
-import { describe, it, expect, vi, beforeEach } from "vitest";
+import "@testing-library/jest-dom/vitest";
 import { render, screen, waitFor } from "@testing-library/react";
+import React from "react";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import App from "../App";
 
 vi.mock("../discordSdk", () => ({
@@ -15,9 +17,23 @@ vi.mock("../discordSdk", () => ({
   },
 }));
 
-vi.mock("../discordSetup", () => ({
-  setupDiscordSdk: vi.fn(),
-}));
+vi.mock("../discordSetup", () => {
+  const defaultMockLobby = {
+    instanceId: "test-instance-id",
+    createdAt: new Date().toISOString(),
+    players: [
+      {
+        userId: "1234567890123456789",
+        username: "testuser",
+        avatar: "https://example.com/avatar.png",
+      },
+    ],
+  };
+
+  return {
+    setupDiscordSdk: vi.fn(),
+  };
+});
 
 import { setupDiscordSdk } from "../discordSetup";
 
@@ -36,28 +52,45 @@ describe("App", () => {
 
   it("displays the main content after successful setup", async () => {
     vi.mocked(setupDiscordSdk).mockResolvedValue({
-      access_token: "test-token",
-      user: {
-        id: "123",
-        username: "testuser",
-        discriminator: "0001",
-        public_flags: 0,
+      auth: {
+        access_token: "test-token",
+        user: {
+          id: "1234567890123456789",
+          username: "testuser",
+          discriminator: "0001",
+          public_flags: 0,
+        },
+        scopes: ["identify" as const],
+        expires: "2025-12-15T20:00:00.000Z",
+        application: {
+          id: "app-123",
+          name: "Test App",
+          description: "A test Discord app",
+        },
       },
-      scopes: ["identify" as const],
-      expires: "2025-12-15T20:00:00.000Z",
-      application: {
-        id: "app-123",
-        name: "Test App",
-        description: "A test Discord app",
+      lobby: {
+        instanceId: "test-instance-id",
+        createdAt: new Date().toISOString(),
+        players: [
+          {
+            userId: "1234567890123456789",
+            username: "testuser",
+            avatar: "https://example.com/avatar.png",
+          },
+        ],
       },
     });
 
     render(<App />);
 
     await waitFor(() => {
-      expect(screen.getByText("Hello, World!")).toBeInTheDocument();
+      expect(screen.getByText("Lobby")).toBeInTheDocument();
     });
 
+    expect(screen.getByText("1/5 Players")).toBeInTheDocument();
+    expect(screen.getByText("testuser")).toBeInTheDocument();
+    const avatar = screen.getByAltText("testuser's avatar") as HTMLImageElement;
+    expect(avatar.src).toContain("https://example.com/avatar.png");
     expect(screen.getByAltText("Discord")).toBeInTheDocument();
   });
 
@@ -79,5 +112,135 @@ describe("App", () => {
     render(<App />);
 
     expect(setupDiscordSdk).toHaveBeenCalledOnce();
+  });
+
+  it("renders multiple players with correct player count", async () => {
+    vi.mocked(setupDiscordSdk).mockResolvedValue({
+      auth: {
+        access_token: "test-token",
+        user: {
+          id: "1234567890123456789",
+          username: "testuser",
+          discriminator: "0001",
+          public_flags: 0,
+        },
+        scopes: ["identify" as const],
+        expires: "2025-12-15T20:00:00.000Z",
+        application: {
+          id: "app-123",
+          name: "Test App",
+          description: "A test Discord app",
+        },
+      },
+      lobby: {
+        instanceId: "test-instance-id",
+        createdAt: new Date().toISOString(),
+        players: [
+          {
+            userId: "1234567890123456789",
+            username: "testuser",
+            avatar: "https://example.com/avatar.png",
+          },
+          {
+            userId: "2345678901234567890",
+            username: "anotheruser",
+            avatar: "https://example.com/avatar2.png",
+          },
+          {
+            userId: "3456789012345678901",
+            username: "thirduser",
+            avatar: "https://example.com/avatar3.png",
+          },
+        ],
+      },
+    });
+
+    render(<App />);
+
+    await waitFor(() => {
+      expect(screen.getByText("3/5 Players")).toBeInTheDocument();
+    });
+
+    expect(screen.getByText("testuser")).toBeInTheDocument();
+    expect(screen.getByText("anotheruser")).toBeInTheDocument();
+    expect(screen.getByText("thirduser")).toBeInTheDocument();
+  });
+
+  it("displays empty state when lobby has no players", async () => {
+    vi.mocked(setupDiscordSdk).mockResolvedValue({
+      auth: {
+        access_token: "test-token",
+        user: {
+          id: "1234567890123456789",
+          username: "testuser",
+          discriminator: "0001",
+          public_flags: 0,
+        },
+        scopes: ["identify" as const],
+        expires: "2025-12-15T20:00:00.000Z",
+        application: {
+          id: "app-123",
+          name: "Test App",
+          description: "A test Discord app",
+        },
+      },
+      lobby: {
+        instanceId: "test-instance-id",
+        createdAt: new Date().toISOString(),
+        players: [],
+      },
+    });
+
+    render(<App />);
+
+    await waitFor(() => {
+      expect(screen.getByText("0/5 Players")).toBeInTheDocument();
+    });
+
+    expect(
+      screen.getByText("Waiting for players to join...")
+    ).toBeInTheDocument();
+  });
+
+  it("renders fallback avatar for player with missing avatar", async () => {
+    vi.mocked(setupDiscordSdk).mockResolvedValue({
+      auth: {
+        access_token: "test-token",
+        user: {
+          id: "1234567890123456789",
+          username: "testuser",
+          discriminator: "0001",
+          public_flags: 0,
+        },
+        scopes: ["identify" as const],
+        expires: "2025-12-15T20:00:00.000Z",
+        application: {
+          id: "app-123",
+          name: "Test App",
+          description: "A test Discord app",
+        },
+      },
+      lobby: {
+        instanceId: "test-instance-id",
+        createdAt: new Date().toISOString(),
+        players: [
+          {
+            userId: "1234567890123456789",
+            username: "noavataruser",
+            avatar: "",
+          },
+        ],
+      },
+    });
+
+    render(<App />);
+
+    await waitFor(() => {
+      expect(screen.getByTestId("avatar-placeholder")).toBeInTheDocument();
+    });
+
+    expect(screen.getByText("noavataruser")).toBeInTheDocument();
+    const placeholder = screen.getByTestId("avatar-placeholder");
+    expect(placeholder.textContent).toBe("N");
   });
 });
