@@ -25,7 +25,7 @@ mockFetch.mockResolvedValue({
 vi.stubEnv("VITE_DISCORD_CLIENT_ID", "initial-client-id");
 
 // Import after all mocks are set up
-import { setupDiscordSdk } from "../main";
+import { setupDiscordSdk } from "../discordSetup";
 import { discordSdk } from "../discordSdk";
 
 describe("setupDiscordSdk", () => {
