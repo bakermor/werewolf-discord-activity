@@ -1,15 +1,8 @@
 import type { CommandResponse } from "@discord/embedded-app-sdk";
-import "../style.css";
 import { discordSdk } from "./discordSdk";
-import rocketLogo from "/logo.png";
 
 type Auth = CommandResponse<"authenticate">;
 let auth: Auth;
-
-// Once setupDiscordSdk is complete, we can assert that "auth" is initialized
-setupDiscordSdk().then(() => {
-  console.log("Discord SDK is ready");
-});
 
 export async function setupDiscordSdk() {
   try {
@@ -95,15 +88,4 @@ export async function setupDiscordSdk() {
     console.error("Discord SDK setup failed:", error);
     throw error;
   }
-}
-
-const app = document.querySelector("#app");
-
-if (app) {
-  app.innerHTML = `
-    <div>
-      <img src="${rocketLogo}" class="logo" alt="Discord" />
-      <h1>Hello, World!</h1>
-    </div>
-  `;
 }
