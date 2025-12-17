@@ -1,16 +1,29 @@
-import path from "node:path";
 import dotenv from "dotenv";
 import express, {
   type Application,
   type Request,
   type Response,
 } from "express";
+import { createServer } from "http";
+import path from "node:path";
+import { Server } from "socket.io";
 import { fetchAndRetry } from "./utils";
 
 dotenv.config({ path: "../.env" });
 
 export const app: Application = express();
 const port: number = Number(process.env.PORT) || 3001;
+
+const server = createServer(app);
+const io = new Server(server, {
+  path: "/api/socket.io",
+  cors: {
+    origin: true, // Allow all origins for now
+    credentials: true,
+  },
+  transports: ["polling", "websocket"],
+  allowUpgrades: true,
+});
 
 app.use(express.json());
 
@@ -38,6 +51,45 @@ function addPlayerToLobby(lobby: LobbyState, player: Player): void {
     lobby.players.push(player);
   }
 }
+
+io.on("connection", (socket) => {
+  console.log("New socket connection:", socket.id);
+
+  socket.on("join_lobby", ({ instanceId, userId, username, avatar }) => {
+    console.log(`User ${userId} joining lobby ${instanceId}`);
+
+    socket.join(instanceId);
+
+    // Store user data on the socket
+    socket.data.userId = userId;
+    socket.data.instanceId = instanceId;
+    socket.data.username = username;
+    socket.data.avatar = avatar;
+
+    // Check if lobby already exists
+    let lobby = lobbies.get(instanceId);
+    if (!lobby) {
+      // Create new lobby with empty players array
+      lobby = {
+        instanceId,
+        createdAt: new Date(),
+        players: [],
+      };
+      lobbies.set(instanceId, lobby);
+    }
+
+    // Add player to lobby (deduped by userId)
+    const player: Player = { userId, username, avatar };
+    addPlayerToLobby(lobby, player);
+
+    // Broadcast lobby state to clients
+    io.to(instanceId).emit("lobby_state", {
+      instanceId: lobby.instanceId,
+      createdAt: lobby.createdAt.toISOString(),
+      players: lobby.players,
+    });
+  });
+});
 
 if (process.env.NODE_ENV === "production") {
   const clientBuildPath = path.join(__dirname, "../../client/dist");
@@ -83,58 +135,6 @@ app.post("/api/token", async (req: Request, res: Response) => {
   }
 });
 
-// Lobby initialization endpoint
-app.post("/api/lobby", async (req: Request, res: Response) => {
-  try {
-    const { instanceId, userId, username, avatar } = req.body;
-
-    // Validate instanceId
-    if (
-      !instanceId ||
-      typeof instanceId !== "string" ||
-      instanceId.trim() === ""
-    ) {
-      return res.status(400).send({ error: "Missing or invalid instanceId" });
-    }
-
-    // Validate player data
-    if (!userId || typeof userId !== "string" || userId.trim() === "") {
-      return res.status(400).send({ error: "Missing or invalid userId" });
-    }
-    if (!username || typeof username !== "string" || username.trim() === "") {
-      return res.status(400).send({ error: "Missing or invalid username" });
-    }
-    if (avatar === null || avatar === undefined || typeof avatar !== "string") {
-      return res.status(400).send({ error: "Missing or invalid avatar" });
-    }
-
-    // Check if lobby already exists
-    let lobby = lobbies.get(instanceId);
-    if (!lobby) {
-      // Create new lobby with empty players array
-      lobby = {
-        instanceId,
-        createdAt: new Date(),
-        players: [],
-      };
-      lobbies.set(instanceId, lobby);
-    }
-
-    // Add player to lobby (deduped by userId)
-    const player: Player = { userId, username, avatar };
-    addPlayerToLobby(lobby, player);
-
-    return res.send({
-      instanceId: lobby.instanceId,
-      createdAt: lobby.createdAt.toISOString(),
-      players: lobby.players,
-    });
-  } catch (error) {
-    console.error("Lobby initialization failed:", error);
-    res.status(500).send({ error: "Failed to initialize lobby" });
-  }
-});
-
-app.listen(port, () => {
-  console.log(`App is listening on port ${port} !`);
+server.listen(port, () => {
+  console.log(`Server is listening on port ${port} !`);
 });
