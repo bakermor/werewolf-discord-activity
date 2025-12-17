@@ -2,6 +2,19 @@ import type { CommandResponse } from "@discord/embedded-app-sdk";
 import { discordSdk } from "./discordSdk";
 
 type Auth = CommandResponse<"authenticate">;
+
+export interface Player {
+  userId: string;
+  username: string;
+  avatar: string;
+}
+
+export interface LobbyState {
+  instanceId: string;
+  createdAt: string;
+  players: Player[];
+}
+
 let auth: Auth;
 
 export async function setupDiscordSdk() {
@@ -71,8 +84,12 @@ export async function setupDiscordSdk() {
       body: JSON.stringify({
         instanceId,
         userId: user.id,
-        username: user.username,
-        avatar: user.avatar || "",
+        username: user.global_name ?? `${user.username}#${user.discriminator}`,
+        avatar: user.avatar
+          ? `https://cdn.discordapp.com/avatars/${user.id}/${user.avatar}.png?size=256`
+          : `https://cdn.discordapp.com/embed/avatars/${
+              (BigInt(user.id) >> 22n) % 6n
+            }.png`,
       }),
     });
 
@@ -80,10 +97,10 @@ export async function setupDiscordSdk() {
       throw new Error(`Lobby endpoint returned ${lobbyResponse.status}`);
     }
 
-    const lobby = await lobbyResponse.json();
+    const lobby = (await lobbyResponse.json()) as LobbyState;
     console.log("Lobby initialized:", lobby);
 
-    return auth;
+    return { auth, lobby };
   } catch (error) {
     console.error("Discord SDK setup failed:", error);
     throw error;

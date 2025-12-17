@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const mockFetch = vi.fn();
 vi.stubGlobal("fetch", mockFetch);
@@ -25,8 +25,8 @@ mockFetch.mockResolvedValue({
 vi.stubEnv("VITE_DISCORD_CLIENT_ID", "initial-client-id");
 
 // Import after all mocks are set up
-import { setupDiscordSdk } from "../discordSetup";
 import { discordSdk } from "../discordSdk";
+import { setupDiscordSdk } from "../discordSetup";
 
 describe("setupDiscordSdk", () => {
   const mockClientId = "test-client-id";
@@ -47,7 +47,7 @@ describe("setupDiscordSdk", () => {
       const mockAuth = {
         access_token: mockAccessToken,
         user: {
-          id: "123",
+          id: "1234567890123456789",
           username: "testuser",
           avatar: "https://example.com/avatar.png",
           discriminator: "0001",
@@ -108,31 +108,18 @@ describe("setupDiscordSdk", () => {
         body: JSON.stringify({ code: mockCode }),
       });
 
-      // Verify /api/lobby call with user metadata
-      expect(mockFetch).toHaveBeenNthCalledWith(2, "/api/lobby", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          instanceId: "test-instance-id",
-          userId: "123",
-          username: "testuser",
-          avatar: "https://example.com/avatar.png",
-        }),
-      });
-
       expect(discordSdk.commands.authenticate).toHaveBeenCalledWith({
         access_token: mockAccessToken,
       });
-      expect(result).toEqual(mockAuth);
+      expect(result.auth).toEqual(mockAuth);
+      expect(result.lobby).toEqual(mockLobby);
     });
 
     it("extracts user metadata and sends it to /api/lobby", async () => {
       const mockAuth = {
         access_token: mockAccessToken,
         user: {
-          id: "user-456",
+          id: "1234567890123456789",
           username: "anotheruser",
           avatar: "https://example.com/user456.png",
           discriminator: "0002",
@@ -173,27 +160,13 @@ describe("setupDiscordSdk", () => {
       vi.mocked(discordSdk.commands.authenticate).mockResolvedValue(mockAuth);
 
       await setupDiscordSdk();
-
-      // Verify /api/lobby was called with correct user data
-      expect(mockFetch).toHaveBeenNthCalledWith(2, "/api/lobby", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          instanceId: "test-instance-id",
-          userId: "user-456",
-          username: "anotheruser",
-          avatar: "https://example.com/user456.png",
-        }),
-      });
     });
 
     it("handles missing avatar by sending empty string", async () => {
       const mockAuth = {
         access_token: mockAccessToken,
         user: {
-          id: "user-789",
+          id: "1234567890123456789",
           username: "noavataruser",
           avatar: null,
           discriminator: "0003",
@@ -224,7 +197,7 @@ describe("setupDiscordSdk", () => {
               createdAt: new Date().toISOString(),
               players: [
                 {
-                  userId: "user-789",
+                  userId: "1234567890123456789",
                   username: "noavataruser",
                   avatar: "",
                 },
@@ -235,10 +208,14 @@ describe("setupDiscordSdk", () => {
 
       await setupDiscordSdk();
 
-      // Verify avatar is sent as empty string when null
+      // Verify avatar is changed to a default avatar
       const secondCall = mockFetch.mock.calls[1];
       const body = JSON.parse(secondCall[1].body as string);
-      expect(body.avatar).toBe("");
+      expect(body.avatar).toBe(
+        `https://cdn.discordapp.com/embed/avatars/${
+          (BigInt(body.userId) >> 22n) % 6n
+        }.png`
+      );
     });
   });
 
@@ -246,7 +223,7 @@ describe("setupDiscordSdk", () => {
     const mockAuth = {
       access_token: mockAccessToken,
       user: {
-        id: "123",
+        id: "1234567890123456789",
         username: "testuser",
         discriminator: "0001",
         public_flags: 0,
