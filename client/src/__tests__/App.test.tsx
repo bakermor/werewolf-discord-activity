@@ -18,18 +18,6 @@ vi.mock("../discordSdk", () => ({
 }));
 
 vi.mock("../discordSetup", () => {
-  const defaultMockLobby = {
-    instanceId: "test-instance-id",
-    createdAt: new Date().toISOString(),
-    players: [
-      {
-        userId: "1234567890123456789",
-        username: "testuser",
-        avatar: "https://example.com/avatar.png",
-      },
-    ],
-  };
-
   return {
     setupDiscordSdk: vi.fn(),
   };
@@ -84,14 +72,12 @@ describe("App", () => {
     render(<App />);
 
     await waitFor(() => {
-      expect(screen.getByText("Lobby")).toBeInTheDocument();
+      expect(screen.getByText("Players (1/5)")).toBeInTheDocument();
     });
 
-    expect(screen.getByText("1/5 Players")).toBeInTheDocument();
     expect(screen.getByText("testuser")).toBeInTheDocument();
     const avatar = screen.getByAltText("testuser's avatar") as HTMLImageElement;
     expect(avatar.src).toContain("https://example.com/avatar.png");
-    expect(screen.getByAltText("Discord")).toBeInTheDocument();
   });
 
   it("displays error message when setup fails", async () => {
@@ -158,7 +144,7 @@ describe("App", () => {
     render(<App />);
 
     await waitFor(() => {
-      expect(screen.getByText("3/5 Players")).toBeInTheDocument();
+      expect(screen.getByText("Players (3/5)")).toBeInTheDocument();
     });
 
     expect(screen.getByText("testuser")).toBeInTheDocument();
@@ -194,7 +180,7 @@ describe("App", () => {
     render(<App />);
 
     await waitFor(() => {
-      expect(screen.getByText("0/5 Players")).toBeInTheDocument();
+      expect(screen.getByText("Players (0/5)")).toBeInTheDocument();
     });
 
     expect(

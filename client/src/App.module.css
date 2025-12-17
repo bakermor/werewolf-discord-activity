@@ -1,50 +1,41 @@
 .container {
-  max-width: 1280px;
-  margin: 0 auto;
+  display: flex;
+  justify-content: flex-start;
+  align-items: flex-start;
   padding: 2rem;
-  text-align: center;
+  min-height: 100vh;
+  font-family: "Spectral", serif;
 }
 
-.logo {
-  height: 6em;
-  padding: 1.5em;
-  will-change: filter;
-  transition: filter 300ms;
-}
-
-.logo:hover {
-  filter: drop-shadow(0 0 2em #646cffaa);
-}
-
-.lobbyHeader {
+.playersPanel {
+  width: 380px;
+  height: 600px;
+  background: rgba(26, 26, 26, 0.8);
+  border: 2px solid #555;
+  border-radius: 10px;
+  padding: 1.5rem;
+  box-sizing: border-box;
   display: flex;
   flex-direction: column;
-  align-items: center;
-  gap: 0.5rem;
-  margin-bottom: 2rem;
 }
 
-.lobbyHeader h1 {
-  margin: 0;
-  font-size: 2rem;
-  font-weight: 600;
-}
-
-.playerCount {
-  margin: 0;
-  font-size: 1rem;
-  color: #888;
-  font-weight: 500;
+.playersHeader {
+  margin: 0 0 1.5rem 0;
+  font-size: 1.75rem;
+  font-weight: 400;
+  color: #f5f5f5;
+  text-align: center;
+  font-family: "IM Fell English SC", serif;
+  letter-spacing: 0.05em;
 }
 
 .playersList {
   display: flex;
   flex-direction: column;
   gap: 1rem;
-  align-items: center;
   width: 100%;
-  max-width: 400px;
-  margin: 0 auto;
+  overflow-y: auto;
+  flex: 1;
 }
 
 .playerItem {
@@ -54,12 +45,8 @@
   padding: 1rem;
   border-radius: 0.5rem;
   background: rgba(255, 255, 255, 0.05);
-  width: 100%;
-  transition: background 200ms ease;
-}
-
-.playerItem:hover {
-  background: rgba(255, 255, 255, 0.1);
+  box-sizing: border-box;
+  min-width: 0;
 }
 
 .playerAvatar {
@@ -85,11 +72,15 @@
   text-overflow: ellipsis;
   flex: 1;
   text-align: left;
+  color: #f5f5f5;
+  font-family: "Spectral", serif;
 }
 
 .emptyState {
-  margin-top: 2rem;
+  margin-top: 0;
   font-size: 1rem;
-  color: #888;
+  color: #b0b0b0;
   font-style: italic;
+  text-align: center;
+  font-family: "Spectral", serif;
 }
