@@ -1,6 +1,16 @@
-import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
+import { Socket as ClientSocket, io as ioClient } from "socket.io-client";
 import request from "supertest";
-import { app } from "../app";
+import {
+  afterAll,
+  afterEach,
+  beforeAll,
+  beforeEach,
+  describe,
+  expect,
+  it,
+  vi,
+} from "vitest";
+import { app, server } from "../app";
 
 vi.mock("../utils", () => ({
   fetchAndRetry: vi.fn(),
@@ -9,6 +19,16 @@ vi.mock("../utils", () => ({
 import { fetchAndRetry } from "../utils";
 
 const mockedFetchAndRetry = vi.mocked(fetchAndRetry);
+
+interface LobbyState {
+  instanceId: string;
+  createdAt: string;
+  players: Array<{
+    userId: string;
+    username: string;
+    avatar: string;
+  }>;
+}
 
 describe("POST /api/token", () => {
   beforeEach(() => {
@@ -68,292 +88,350 @@ describe("POST /api/token", () => {
   });
 });
 
-describe("POST /api/lobby", () => {
+describe("Socket.IO Lobby Management", () => {
+  let clientSocket: ClientSocket;
+  let serverPort: number;
+  let serverUrl: string;
+
+  // Helper function to wait for socket event
+  const waitForSocketEvent = <T = unknown>(
+    socket: ClientSocket,
+    eventName: string,
+    timeout = 5000
+  ): Promise<T> => {
+    return new Promise((resolve, reject) => {
+      const timer = setTimeout(
+        () => reject(new Error(`Event ${eventName} timeout`)),
+        timeout
+      );
+      socket.once(eventName, (data: T) => {
+        clearTimeout(timer);
+        resolve(data);
+      });
+      socket.once("connect_error", (error: Error) => {
+        clearTimeout(timer);
+        reject(error);
+      });
+    });
+  };
+
+  beforeAll(async () => {
+    // Start the server on a random port for testing
+    return new Promise<void>((resolve) => {
+      const listener = server.listen(0, () => {
+        const address = listener.address();
+        if (address && typeof address === "object") {
+          serverPort = address.port;
+          serverUrl = `http://localhost:${serverPort}`;
+          resolve();
+        }
+      });
+    });
+  });
+
+  afterAll(async () => {
+    return new Promise<void>((resolve) => {
+      server.close(() => resolve());
+    });
+  });
+
   beforeEach(() => {
     vi.clearAllMocks();
   });
 
-  afterEach(() => {
-    vi.restoreAllMocks();
+  afterEach(async () => {
+    if (clientSocket && clientSocket.connected) {
+      clientSocket.disconnect();
+    }
+    // Give sockets time to clean up
+    await new Promise((resolve) => setTimeout(resolve, 100));
   });
 
   const validPlayerData = {
+    instanceId: "test-instance-id",
     userId: "user-123",
     username: "testuser",
     avatar: "https://example.com/avatar.png",
   };
 
-  // Validation tests
-  it("returns 400 when request lacks instanceId", async () => {
-    const response = await request(app)
-      .post("/api/lobby")
-      .send({ ...validPlayerData });
-
-    expect(response.status).toBe(400);
-    expect(response.body).toEqual({
-      error: "Missing or invalid instanceId",
+  it("accepts socket connection", async () => {
+    clientSocket = ioClient(serverUrl, {
+      path: "/api/socket.io",
+      transports: ["polling", "websocket"],
     });
+
+    await waitForSocketEvent(clientSocket, "connect");
+    expect(clientSocket.connected).toBe(true);
   });
 
-  it("returns 400 when instanceId is an empty string", async () => {
-    const response = await request(app)
-      .post("/api/lobby")
-      .send({ instanceId: "", ...validPlayerData });
-
-    expect(response.status).toBe(400);
-    expect(response.body).toEqual({
-      error: "Missing or invalid instanceId",
-    });
-  });
-
-  it("returns 400 when instanceId is not a string", async () => {
-    const response = await request(app)
-      .post("/api/lobby")
-      .send({ instanceId: 12345, ...validPlayerData });
-
-    expect(response.status).toBe(400);
-    expect(response.body).toEqual({
-      error: "Missing or invalid instanceId",
-    });
-  });
-
-  it("returns 400 when userId is missing", async () => {
-    const response = await request(app).post("/api/lobby").send({
-      instanceId: "test-instance",
-      username: "testuser",
-      avatar: "https://example.com/avatar.png",
+  it("creates a lobby when first player joins", async () => {
+    clientSocket = ioClient(serverUrl, {
+      path: "/api/socket.io",
+      transports: ["polling", "websocket"],
     });
 
-    expect(response.status).toBe(400);
-    expect(response.body).toEqual({
-      error: "Missing or invalid userId",
-    });
-  });
+    await waitForSocketEvent(clientSocket, "connect");
+    clientSocket.emit("join_lobby", validPlayerData);
 
-  it("returns 400 when userId is an empty string", async () => {
-    const response = await request(app).post("/api/lobby").send({
-      instanceId: "test-instance",
-      userId: "",
-      username: "testuser",
-      avatar: "https://example.com/avatar.png",
-    });
-
-    expect(response.status).toBe(400);
-    expect(response.body).toEqual({
-      error: "Missing or invalid userId",
-    });
-  });
-
-  it("returns 400 when username is missing", async () => {
-    const response = await request(app).post("/api/lobby").send({
-      instanceId: "test-instance",
-      userId: "user-123",
-      avatar: "https://example.com/avatar.png",
-    });
-
-    expect(response.status).toBe(400);
-    expect(response.body).toEqual({
-      error: "Missing or invalid username",
-    });
-  });
-
-  it("returns 400 when username is an empty string", async () => {
-    const response = await request(app).post("/api/lobby").send({
-      instanceId: "test-instance",
-      userId: "user-123",
-      username: "",
-      avatar: "https://example.com/avatar.png",
-    });
-
-    expect(response.status).toBe(400);
-    expect(response.body).toEqual({
-      error: "Missing or invalid username",
-    });
-  });
-
-  it("returns 400 when avatar is missing", async () => {
-    const response = await request(app).post("/api/lobby").send({
-      instanceId: "test-instance",
-      userId: "user-123",
-      username: "testuser",
-    });
-
-    expect(response.status).toBe(400);
-    expect(response.body).toEqual({
-      error: "Missing or invalid avatar",
-    });
-  });
-
-  it("returns 400 when avatar is not a string", async () => {
-    const response = await request(app).post("/api/lobby").send({
-      instanceId: "test-instance",
-      userId: "user-123",
-      username: "testuser",
-      avatar: 12345,
-    });
-
-    expect(response.status).toBe(400);
-    expect(response.body).toEqual({
-      error: "Missing or invalid avatar",
-    });
-  });
-
-  // Player addition tests
-  it("adds a player to a new lobby", async () => {
-    const instanceId = "test-instance-new";
-
-    const response = await request(app)
-      .post("/api/lobby")
-      .send({ instanceId, ...validPlayerData });
-
-    expect(response.status).toBe(200);
-    expect(response.body).toHaveProperty("instanceId", instanceId);
-    expect(response.body).toHaveProperty("createdAt");
-    expect(response.body).toHaveProperty("players");
-    expect(Array.isArray(response.body.players)).toBe(true);
-    expect(response.body.players).toHaveLength(1);
-    expect(response.body.players[0]).toEqual(validPlayerData);
-  });
-
-  // Player deduplication test
-  it("prevents duplicate players on refresh (same userId)", async () => {
-    const instanceId = "test-instance-dedup";
-
-    // First request - add player
-    const firstResponse = await request(app)
-      .post("/api/lobby")
-      .send({ instanceId, ...validPlayerData });
-
-    expect(firstResponse.status).toBe(200);
-    expect(firstResponse.body.players).toHaveLength(1);
-
-    // Second request - same player
-    const secondResponse = await request(app)
-      .post("/api/lobby")
-      .send({ instanceId, ...validPlayerData });
-
-    expect(secondResponse.status).toBe(200);
-    expect(secondResponse.body.players).toHaveLength(1);
-    expect(secondResponse.body.players[0]).toEqual(validPlayerData);
-  });
-
-  // Multiple players test
-  it("allows multiple different players to join the same lobby", async () => {
-    const instanceId = "test-instance-multi";
-
-    const player1 = {
-      userId: "user-1",
-      username: "player1",
-      avatar: "https://example.com/avatar1.png",
-    };
-
-    const player2 = {
-      userId: "user-2",
-      username: "player2",
-      avatar: "https://example.com/avatar2.png",
-    };
-
-    // First player joins
-    const firstResponse = await request(app)
-      .post("/api/lobby")
-      .send({ instanceId, ...player1 });
-
-    expect(firstResponse.status).toBe(200);
-    expect(firstResponse.body.players).toHaveLength(1);
-    expect(firstResponse.body.players[0]).toEqual(player1);
-
-    // Second player joins
-    const secondResponse = await request(app)
-      .post("/api/lobby")
-      .send({ instanceId, ...player2 });
-
-    expect(secondResponse.status).toBe(200);
-    expect(secondResponse.body.players).toHaveLength(2);
-    expect(secondResponse.body.players).toContainEqual(player1);
-    expect(secondResponse.body.players).toContainEqual(player2);
-  });
-
-  // Multiple players with no duplicate test
-  it("adds multiple players without duplicates when re-adding existing player", async () => {
-    const instanceId = "test-instance-no-dup";
-
-    const player1 = {
-      userId: "user-1",
-      username: "player1",
-      avatar: "https://example.com/avatar1.png",
-    };
-
-    const player2 = {
-      userId: "user-2",
-      username: "player2",
-      avatar: "https://example.com/avatar2.png",
-    };
-
-    // Player 1 joins
-    await request(app)
-      .post("/api/lobby")
-      .send({ instanceId, ...player1 });
-
-    // Player 2 joins
-    await request(app)
-      .post("/api/lobby")
-      .send({ instanceId, ...player2 });
-
-    // Player 1 re-joins (should not duplicate)
-    const reJoinResponse = await request(app)
-      .post("/api/lobby")
-      .send({ instanceId, ...player1 });
-
-    expect(reJoinResponse.status).toBe(200);
-    expect(reJoinResponse.body.players).toHaveLength(2);
-    expect(reJoinResponse.body.players).toContainEqual(player1);
-    expect(reJoinResponse.body.players).toContainEqual(player2);
-  });
-
-  // Lobby isolation test
-  it("maintains separate player lists for different lobbies", async () => {
-    const player1 = {
-      userId: "user-1",
-      username: "player1",
-      avatar: "https://example.com/avatar1.png",
-    };
-
-    const player2 = {
-      userId: "user-2",
-      username: "player2",
-      avatar: "https://example.com/avatar2.png",
-    };
-
-    // Player 1 joins lobby A
-    const lobbyAResponse = await request(app)
-      .post("/api/lobby")
-      .send({ instanceId: "lobby-a", ...player1 });
-
-    // Player 2 joins lobby B
-    const lobbyBResponse = await request(app)
-      .post("/api/lobby")
-      .send({ instanceId: "lobby-b", ...player2 });
-
-    expect(lobbyAResponse.body.players).toHaveLength(1);
-    expect(lobbyAResponse.body.players[0]).toEqual(player1);
-
-    expect(lobbyBResponse.body.players).toHaveLength(1);
-    expect(lobbyBResponse.body.players[0]).toEqual(player2);
-  });
-
-  it("contains required fields in response", async () => {
-    const instanceId = "test-instance-validation";
-
-    const response = await request(app)
-      .post("/api/lobby")
-      .send({ instanceId, ...validPlayerData });
-
-    expect(response.status).toBe(200);
-    expect(response.body).toHaveProperty("instanceId");
-    expect(response.body).toHaveProperty("createdAt");
-    expect(response.body).toHaveProperty("players");
-    expect(Object.keys(response.body)).toEqual(
-      expect.arrayContaining(["instanceId", "createdAt", "players"])
+    const state = await waitForSocketEvent<LobbyState>(
+      clientSocket,
+      "lobby_state"
     );
+    expect(state).toHaveProperty("instanceId", validPlayerData.instanceId);
+    expect(state).toHaveProperty("createdAt");
+    expect(state).toHaveProperty("players");
+    expect(state.players).toHaveLength(1);
+    expect(state.players[0]).toEqual({
+      userId: validPlayerData.userId,
+      username: validPlayerData.username,
+      avatar: validPlayerData.avatar,
+    });
+  });
+
+  it("adds multiple players to the same lobby", async () => {
+    const player1Data = {
+      instanceId: "multi-player-lobby",
+      userId: "user-1",
+      username: "player1",
+      avatar: "https://example.com/avatar1.png",
+    };
+
+    const player2Data = {
+      instanceId: "multi-player-lobby",
+      userId: "user-2",
+      username: "player2",
+      avatar: "https://example.com/avatar2.png",
+    };
+
+    const player1Socket = ioClient(serverUrl, {
+      path: "/api/socket.io",
+      transports: ["polling", "websocket"],
+    });
+
+    // Wait for player1 to connect and emit join_lobby
+    await waitForSocketEvent(player1Socket, "connect");
+    player1Socket.emit("join_lobby", player1Data);
+
+    // Wait for initial state (player1 only)
+    const state1 = await waitForSocketEvent<LobbyState>(
+      player1Socket,
+      "lobby_state"
+    );
+    expect(state1.players).toHaveLength(1);
+    expect(state1.players[0].userId).toBe(player1Data.userId);
+
+    // Connect player 2
+    const player2Socket = ioClient(serverUrl, {
+      path: "/api/socket.io",
+      transports: ["polling", "websocket"],
+    });
+
+    await waitForSocketEvent(player2Socket, "connect");
+    player2Socket.emit("join_lobby", player2Data);
+
+    // Wait for updated state (both players)
+    const state2 = await waitForSocketEvent<LobbyState>(
+      player1Socket,
+      "lobby_state"
+    );
+    expect(state2.players).toHaveLength(2);
+    expect(state2.players).toContainEqual({
+      userId: player1Data.userId,
+      username: player1Data.username,
+      avatar: player1Data.avatar,
+    });
+    expect(state2.players).toContainEqual({
+      userId: player2Data.userId,
+      username: player2Data.username,
+      avatar: player2Data.avatar,
+    });
+
+    // Clean up
+    player1Socket.disconnect();
+    player2Socket.disconnect();
+  });
+
+  it("prevents duplicate players (same userId) in a lobby", async () => {
+    const playerData = {
+      instanceId: "dedup-lobby",
+      userId: "duplicate-user",
+      username: "testuser",
+      avatar: "https://example.com/avatar.png",
+    };
+
+    clientSocket = ioClient(serverUrl, {
+      path: "/api/socket.io",
+      transports: ["polling", "websocket"],
+    });
+
+    await waitForSocketEvent(clientSocket, "connect");
+    clientSocket.emit("join_lobby", playerData);
+
+    // First state - should have 1 player
+    const state1 = await waitForSocketEvent<LobbyState>(
+      clientSocket,
+      "lobby_state"
+    );
+    expect(state1.players).toHaveLength(1);
+
+    // Try to join again with same userId
+    clientSocket.emit("join_lobby", playerData);
+
+    // Second state - should still have only 1 player (deduplicated)
+    const state2 = await waitForSocketEvent<LobbyState>(
+      clientSocket,
+      "lobby_state"
+    );
+    expect(state2.players).toHaveLength(1);
+    expect(state2.players[0].userId).toBe(playerData.userId);
+  });
+
+  it("maintains separate lobbies for different instanceIds", async () => {
+    const lobby1Data = {
+      instanceId: "lobby-1",
+      userId: "user-1",
+      username: "player1",
+      avatar: "https://example.com/avatar1.png",
+    };
+
+    const lobby2Data = {
+      instanceId: "lobby-2",
+      userId: "user-2",
+      username: "player2",
+      avatar: "https://example.com/avatar2.png",
+    };
+
+    const socket1 = ioClient(serverUrl, {
+      path: "/api/socket.io",
+      transports: ["polling", "websocket"],
+    });
+
+    const socket2 = ioClient(serverUrl, {
+      path: "/api/socket.io",
+      transports: ["polling", "websocket"],
+    });
+
+    // Connect both sockets and join their respective lobbies
+    await Promise.all([
+      waitForSocketEvent(socket1, "connect"),
+      waitForSocketEvent(socket2, "connect"),
+    ]);
+
+    socket1.emit("join_lobby", lobby1Data);
+    socket2.emit("join_lobby", lobby2Data);
+
+    // Wait for both lobby states
+    const [state1, state2] = await Promise.all([
+      waitForSocketEvent<LobbyState>(socket1, "lobby_state"),
+      waitForSocketEvent<LobbyState>(socket2, "lobby_state"),
+    ]);
+
+    expect(state1.instanceId).toBe("lobby-1");
+    expect(state1.players).toHaveLength(1);
+    expect(state1.players[0].userId).toBe("user-1");
+
+    expect(state2.instanceId).toBe("lobby-2");
+    expect(state2.players).toHaveLength(1);
+    expect(state2.players[0].userId).toBe("user-2");
+
+    socket1.disconnect();
+    socket2.disconnect();
+  });
+
+  it("broadcasts lobby state to all clients in the same room", async () => {
+    const instanceId = "broadcast-lobby";
+    const player1Data = {
+      instanceId,
+      userId: "user-1",
+      username: "player1",
+      avatar: "https://example.com/avatar1.png",
+    };
+
+    const player2Data = {
+      instanceId,
+      userId: "user-2",
+      username: "player2",
+      avatar: "https://example.com/avatar2.png",
+    };
+
+    const socket1 = ioClient(serverUrl, {
+      path: "/api/socket.io",
+      transports: ["polling", "websocket"],
+    });
+
+    await waitForSocketEvent(socket1, "connect");
+    socket1.emit("join_lobby", player1Data);
+
+    // Wait for initial state (player1 only)
+    const state1 = await waitForSocketEvent<LobbyState>(socket1, "lobby_state");
+    expect(state1.players).toHaveLength(1);
+
+    // Connect player 2
+    const socket2 = ioClient(serverUrl, {
+      path: "/api/socket.io",
+      transports: ["polling", "websocket"],
+    });
+
+    await waitForSocketEvent(socket2, "connect");
+    socket2.emit("join_lobby", player2Data);
+
+    // Wait for socket2 to receive state (should have both players)
+    const state2Socket2 = await waitForSocketEvent<LobbyState>(
+      socket2,
+      "lobby_state"
+    );
+    expect(state2Socket2.players).toHaveLength(2);
+
+    // Wait for socket1 to receive broadcast update
+    const state2Socket1 = await waitForSocketEvent<LobbyState>(
+      socket1,
+      "lobby_state"
+    );
+    expect(state2Socket1.players).toHaveLength(2);
+
+    socket1.disconnect();
+    socket2.disconnect();
+  });
+
+  it("includes timestamp in lobby state", async () => {
+    clientSocket = ioClient(serverUrl, {
+      path: "/api/socket.io",
+      transports: ["polling", "websocket"],
+    });
+
+    await waitForSocketEvent(clientSocket, "connect");
+    clientSocket.emit("join_lobby", validPlayerData);
+
+    const state = await waitForSocketEvent<LobbyState>(
+      clientSocket,
+      "lobby_state"
+    );
+    expect(state).toHaveProperty("createdAt");
+    expect(typeof state.createdAt).toBe("string");
+
+    // Verify it's a valid ISO date string
+    const date = new Date(state.createdAt);
+    expect(date.toString()).not.toBe("Invalid Date");
+  });
+
+  it("stores user data on socket", async () => {
+    clientSocket = ioClient(serverUrl, {
+      path: "/api/socket.io",
+      transports: ["polling", "websocket"],
+    });
+
+    await waitForSocketEvent(clientSocket, "connect");
+    clientSocket.emit("join_lobby", validPlayerData);
+
+    const state = await waitForSocketEvent<LobbyState>(
+      clientSocket,
+      "lobby_state"
+    );
+    // Verify the lobby was created with correct data
+    expect(state.players[0]).toEqual({
+      userId: validPlayerData.userId,
+      username: validPlayerData.username,
+      avatar: validPlayerData.avatar,
+    });
   });
 });

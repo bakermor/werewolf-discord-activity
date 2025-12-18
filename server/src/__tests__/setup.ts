@@ -1,3 +1,5 @@
+process.env.NODE_ENV = "test";
+
 // Suppress console.error for expected error messages during tests
 const originalError = console.error;
 console.error = (...args: unknown[]) => {
@@ -11,4 +13,3 @@ console.error = (...args: unknown[]) => {
   }
   originalError.apply(console, args);
 };
-

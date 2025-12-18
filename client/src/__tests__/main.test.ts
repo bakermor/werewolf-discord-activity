@@ -3,6 +3,25 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 const mockFetch = vi.fn();
 vi.stubGlobal("fetch", mockFetch);
 
+// Mock socket instance
+const mockSocket = {
+  on: vi.fn(),
+  emit: vi.fn(),
+  io: {
+    engine: {
+      transport: {
+        name: "polling",
+      },
+    },
+  },
+  id: "mock-socket-id",
+};
+
+// Mock socket.io-client
+vi.mock("socket.io-client", () => ({
+  io: vi.fn(() => mockSocket),
+}));
+
 vi.mock("../discordSdk", () => ({
   discordSdk: {
     ready: vi.fn().mockResolvedValue(undefined),
@@ -25,6 +44,7 @@ mockFetch.mockResolvedValue({
 vi.stubEnv("VITE_DISCORD_CLIENT_ID", "initial-client-id");
 
 // Import after all mocks are set up
+import { io } from "socket.io-client";
 import { discordSdk } from "../discordSdk";
 import { setupDiscordSdk } from "../discordSetup";
 
@@ -36,6 +56,8 @@ describe("setupDiscordSdk", () => {
   beforeEach(() => {
     vi.resetAllMocks();
     vi.stubEnv("VITE_DISCORD_CLIENT_ID", mockClientId);
+    mockSocket.on.mockReturnValue(mockSocket);
+    mockSocket.emit.mockReturnValue(mockSocket);
   });
 
   afterEach(() => {
@@ -43,13 +65,13 @@ describe("setupDiscordSdk", () => {
   });
 
   describe("successful setup flow", () => {
-    it("completes the full setup loop and returns auth", async () => {
+    it("completes the full setup loop with socket connection", async () => {
       const mockAuth = {
         access_token: mockAccessToken,
         user: {
           id: "1234567890123456789",
           username: "testuser",
-          avatar: "https://example.com/avatar.png",
+          avatar: "avatar123",
           discriminator: "0001",
           public_flags: 0,
         },
@@ -61,35 +83,45 @@ describe("setupDiscordSdk", () => {
           description: "A test Discord app",
         },
       };
+
       vi.mocked(discordSdk.ready).mockResolvedValue(undefined);
       vi.mocked(discordSdk.commands.authorize).mockResolvedValue({
         code: mockCode,
       });
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        json: () => Promise.resolve({ access_token: mockAccessToken }),
+      });
+      vi.mocked(discordSdk.commands.authenticate).mockResolvedValue(mockAuth);
+
       const mockLobby = {
         instanceId: "test-instance-id",
         createdAt: new Date().toISOString(),
         players: [
           {
-            userId: "123",
+            userId: "1234567890123456789",
             username: "testuser",
-            avatar: "https://example.com/avatar.png",
+            avatar:
+              "https://cdn.discordapp.com/avatars/1234567890123456789/avatar123.png?size=256",
           },
         ],
       };
-      mockFetch
-        .mockResolvedValueOnce({
-          ok: true,
-          json: () => Promise.resolve({ access_token: mockAccessToken }),
-        })
-        .mockResolvedValueOnce({
-          ok: true,
-          json: () => Promise.resolve(mockLobby),
-        });
-      vi.mocked(discordSdk.commands.authenticate).mockResolvedValue(mockAuth);
+
+      // Mock socket event handlers
+      mockSocket.on.mockImplementation(
+        (event: string, callback: (arg?: unknown) => void) => {
+          if (event === "connect") {
+            setTimeout(() => callback(), 0);
+          } else if (event === "lobby_state") {
+            setTimeout(() => callback(mockLobby), 10);
+          }
+          return mockSocket;
+        }
+      );
 
       const result = await setupDiscordSdk();
 
-      // Verify the full flow was executed
+      // Verify Discord SDK flow
       expect(discordSdk.ready).toHaveBeenCalledOnce();
       expect(discordSdk.commands.authorize).toHaveBeenCalledWith({
         client_id: mockClientId,
@@ -100,7 +132,7 @@ describe("setupDiscordSdk", () => {
       });
 
       // Verify /api/token call
-      expect(mockFetch).toHaveBeenNthCalledWith(1, "/api/token", {
+      expect(mockFetch).toHaveBeenCalledWith("/api/token", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -111,17 +143,55 @@ describe("setupDiscordSdk", () => {
       expect(discordSdk.commands.authenticate).toHaveBeenCalledWith({
         access_token: mockAccessToken,
       });
+
+      // Verify socket.io was initialized
+      expect(io).toHaveBeenCalledWith(window.location.origin, {
+        path: "/api/socket.io",
+        transports: ["polling", "websocket"],
+        reconnectionAttempts: 5,
+        reconnectionDelay: 1000,
+        timeout: 10000,
+        autoConnect: true,
+      });
+
+      // Verify socket event listeners were set up
+      expect(mockSocket.on).toHaveBeenCalledWith(
+        "connect",
+        expect.any(Function)
+      );
+      expect(mockSocket.on).toHaveBeenCalledWith(
+        "lobby_state",
+        expect.any(Function)
+      );
+      expect(mockSocket.on).toHaveBeenCalledWith(
+        "connect_error",
+        expect.any(Function)
+      );
+      expect(mockSocket.on).toHaveBeenCalledWith("error", expect.any(Function));
+
+      // Verify join_lobby was emitted
+      expect(mockSocket.emit).toHaveBeenCalledWith("join_lobby", {
+        instanceId: "test-instance-id",
+        userId: "1234567890123456789",
+        username: "testuser#0001",
+        avatar:
+          "https://cdn.discordapp.com/avatars/1234567890123456789/avatar123.png?size=256",
+      });
+
+      // Verify result
       expect(result.auth).toEqual(mockAuth);
       expect(result.lobby).toEqual(mockLobby);
+      expect(result.socket).toBe(mockSocket);
     });
 
-    it("extracts user metadata and sends it to /api/lobby", async () => {
+    it("sends join_lobby event with global_name when available", async () => {
       const mockAuth = {
         access_token: mockAccessToken,
         user: {
           id: "1234567890123456789",
-          username: "anotheruser",
-          avatar: "https://example.com/user456.png",
+          username: "oldusername",
+          global_name: "GlobalDisplayName",
+          avatar: "avatar456",
           discriminator: "0002",
           public_flags: 0,
         },
@@ -133,36 +203,54 @@ describe("setupDiscordSdk", () => {
           description: "A test Discord app",
         },
       };
+
       vi.mocked(discordSdk.ready).mockResolvedValue(undefined);
       vi.mocked(discordSdk.commands.authorize).mockResolvedValue({
         code: mockCode,
       });
-      mockFetch
-        .mockResolvedValueOnce({
-          ok: true,
-          json: () => Promise.resolve({ access_token: mockAccessToken }),
-        })
-        .mockResolvedValueOnce({
-          ok: true,
-          json: () =>
-            Promise.resolve({
-              instanceId: "test-instance-id",
-              createdAt: new Date().toISOString(),
-              players: [
-                {
-                  userId: "user-456",
-                  username: "anotheruser",
-                  avatar: "https://example.com/user456.png",
-                },
-              ],
-            }),
-        });
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        json: () => Promise.resolve({ access_token: mockAccessToken }),
+      });
       vi.mocked(discordSdk.commands.authenticate).mockResolvedValue(mockAuth);
 
+      const mockLobby = {
+        instanceId: "test-instance-id",
+        createdAt: new Date().toISOString(),
+        players: [
+          {
+            userId: "1234567890123456789",
+            username: "GlobalDisplayName",
+            avatar:
+              "https://cdn.discordapp.com/avatars/1234567890123456789/avatar456.png?size=256",
+          },
+        ],
+      };
+
+      mockSocket.on.mockImplementation(
+        (event: string, callback: (arg?: unknown) => void) => {
+          if (event === "connect") {
+            setTimeout(() => callback(), 0);
+          } else if (event === "lobby_state") {
+            setTimeout(() => callback(mockLobby), 10);
+          }
+          return mockSocket;
+        }
+      );
+
       await setupDiscordSdk();
+
+      // Verify join_lobby was emitted with global_name
+      expect(mockSocket.emit).toHaveBeenCalledWith("join_lobby", {
+        instanceId: "test-instance-id",
+        userId: "1234567890123456789",
+        username: "GlobalDisplayName",
+        avatar:
+          "https://cdn.discordapp.com/avatars/1234567890123456789/avatar456.png?size=256",
+      });
     });
 
-    it("handles missing avatar by sending empty string", async () => {
+    it("handles missing avatar by generating default avatar URL", async () => {
       const mockAuth = {
         access_token: mockAccessToken,
         user: {
@@ -180,42 +268,53 @@ describe("setupDiscordSdk", () => {
           description: "A test Discord app",
         },
       };
+
       vi.mocked(discordSdk.ready).mockResolvedValue(undefined);
       vi.mocked(discordSdk.commands.authorize).mockResolvedValue({
         code: mockCode,
       });
-      mockFetch
-        .mockResolvedValueOnce({
-          ok: true,
-          json: () => Promise.resolve({ access_token: mockAccessToken }),
-        })
-        .mockResolvedValueOnce({
-          ok: true,
-          json: () =>
-            Promise.resolve({
-              instanceId: "test-instance-id",
-              createdAt: new Date().toISOString(),
-              players: [
-                {
-                  userId: "1234567890123456789",
-                  username: "noavataruser",
-                  avatar: "",
-                },
-              ],
-            }),
-        });
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        json: () => Promise.resolve({ access_token: mockAccessToken }),
+      });
       vi.mocked(discordSdk.commands.authenticate).mockResolvedValue(mockAuth);
+
+      const expectedAvatar = `https://cdn.discordapp.com/embed/avatars/${
+        (BigInt("1234567890123456789") >> 22n) % 6n
+      }.png`;
+
+      const mockLobby = {
+        instanceId: "test-instance-id",
+        createdAt: new Date().toISOString(),
+        players: [
+          {
+            userId: "1234567890123456789",
+            username: "noavataruser#0003",
+            avatar: expectedAvatar,
+          },
+        ],
+      };
+
+      mockSocket.on.mockImplementation(
+        (event: string, callback: (arg?: unknown) => void) => {
+          if (event === "connect") {
+            setTimeout(() => callback(), 0);
+          } else if (event === "lobby_state") {
+            setTimeout(() => callback(mockLobby), 10);
+          }
+          return mockSocket;
+        }
+      );
 
       await setupDiscordSdk();
 
-      // Verify avatar is changed to a default avatar
-      const secondCall = mockFetch.mock.calls[1];
-      const body = JSON.parse(secondCall[1].body as string);
-      expect(body.avatar).toBe(
-        `https://cdn.discordapp.com/embed/avatars/${
-          (BigInt(body.userId) >> 22n) % 6n
-        }.png`
-      );
+      // Verify join_lobby was emitted with default avatar
+      expect(mockSocket.emit).toHaveBeenCalledWith("join_lobby", {
+        instanceId: "test-instance-id",
+        userId: "1234567890123456789",
+        username: "noavataruser#0003",
+        avatar: expectedAvatar,
+      });
     });
   });
 
@@ -393,42 +492,66 @@ describe("setupDiscordSdk", () => {
       });
     });
 
-    it("throws error when lobby endpoint returns non-ok status", async () => {
+    it("throws error when socket connection times out", async () => {
       vi.mocked(discordSdk.ready).mockResolvedValue(undefined);
       vi.mocked(discordSdk.commands.authorize).mockResolvedValue({
         code: mockCode,
       });
-      mockFetch
-        .mockResolvedValueOnce({
-          ok: true,
-          json: () => Promise.resolve({ access_token: mockAccessToken }),
-        })
-        .mockResolvedValueOnce({
-          ok: false,
-          status: 400,
-        });
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        json: () => Promise.resolve({ access_token: mockAccessToken }),
+      });
       vi.mocked(discordSdk.commands.authenticate).mockResolvedValue(mockAuth);
+
+      // Mock socket that never connects or emits lobby_state
+      mockSocket.on.mockImplementation(() => {
+        // Don't trigger any callbacks - simulate timeout
+        return mockSocket;
+      });
 
       await expect(setupDiscordSdk()).rejects.toThrow(
-        "Lobby endpoint returned 400"
+        "Socket connection timeout"
       );
-    });
+    }, 20000);
 
-    it("throws error when lobby endpoint network request fails", async () => {
+    it("handles socket connect_error event", async () => {
       vi.mocked(discordSdk.ready).mockResolvedValue(undefined);
       vi.mocked(discordSdk.commands.authorize).mockResolvedValue({
         code: mockCode,
       });
-      const networkError = new Error("Lobby network error");
-      mockFetch
-        .mockResolvedValueOnce({
-          ok: true,
-          json: () => Promise.resolve({ access_token: mockAccessToken }),
-        })
-        .mockRejectedValueOnce(networkError);
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        json: () => Promise.resolve({ access_token: mockAccessToken }),
+      });
       vi.mocked(discordSdk.commands.authenticate).mockResolvedValue(mockAuth);
 
-      await expect(setupDiscordSdk()).rejects.toThrow("Lobby network error");
-    });
+      const consoleSpy = vi
+        .spyOn(console, "error")
+        .mockImplementation(() => {});
+
+      mockSocket.on.mockImplementation(
+        (event: string, callback: (arg?: unknown) => void) => {
+          if (event === "connect_error") {
+            setTimeout(() => callback(new Error("Connection failed")), 0);
+          }
+          // Still timeout since we don't connect
+          return mockSocket;
+        }
+      );
+
+      await expect(setupDiscordSdk()).rejects.toThrow(
+        "Socket connection timeout"
+      );
+
+      // Verify error was logged
+      await vi.waitFor(() => {
+        expect(consoleSpy).toHaveBeenCalledWith(
+          "Socket connection error:",
+          expect.any(Error)
+        );
+      });
+
+      consoleSpy.mockRestore();
+    }, 20000);
   });
 });

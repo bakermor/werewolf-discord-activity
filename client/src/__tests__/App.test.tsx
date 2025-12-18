@@ -26,8 +26,23 @@ vi.mock("../discordSetup", () => {
 import { setupDiscordSdk } from "../discordSetup";
 
 describe("App", () => {
+  let mockSocket: {
+    on: ReturnType<typeof vi.fn>;
+    emit: ReturnType<typeof vi.fn>;
+    disconnect: ReturnType<typeof vi.fn>;
+    id: string;
+  };
+
   beforeEach(() => {
     vi.resetAllMocks();
+
+    // Create a mock socket with on method
+    mockSocket = {
+      on: vi.fn(),
+      emit: vi.fn(),
+      disconnect: vi.fn(),
+      id: "mock-socket-id",
+    };
   });
 
   it("displays loading state initially", () => {
@@ -67,6 +82,7 @@ describe("App", () => {
           },
         ],
       },
+      socket: mockSocket as never,
     });
 
     render(<App />);
@@ -139,6 +155,7 @@ describe("App", () => {
           },
         ],
       },
+      socket: mockSocket as never,
     });
 
     render(<App />);
@@ -175,6 +192,7 @@ describe("App", () => {
         createdAt: new Date().toISOString(),
         players: [],
       },
+      socket: mockSocket as never,
     });
 
     render(<App />);
@@ -217,6 +235,7 @@ describe("App", () => {
           },
         ],
       },
+      socket: mockSocket as never,
     });
 
     render(<App />);
@@ -228,5 +247,128 @@ describe("App", () => {
     expect(screen.getByText("noavataruser")).toBeInTheDocument();
     const placeholder = screen.getByTestId("avatar-placeholder");
     expect(placeholder.textContent).toBe("N");
+  });
+
+  it("sets up socket listener for lobby_state events", async () => {
+    vi.mocked(setupDiscordSdk).mockResolvedValue({
+      auth: {
+        access_token: "test-token",
+        user: {
+          id: "1234567890123456789",
+          username: "testuser",
+          discriminator: "0001",
+          public_flags: 0,
+        },
+        scopes: ["identify" as const],
+        expires: "2025-12-15T20:00:00.000Z",
+        application: {
+          id: "app-123",
+          name: "Test App",
+          description: "A test Discord app",
+        },
+      },
+      lobby: {
+        instanceId: "test-instance-id",
+        createdAt: new Date().toISOString(),
+        players: [
+          {
+            userId: "1234567890123456789",
+            username: "testuser",
+            avatar: "https://example.com/avatar.png",
+          },
+        ],
+      },
+      socket: mockSocket as never,
+    });
+
+    render(<App />);
+
+    await waitFor(() => {
+      expect(screen.getByText("Players (1/5)")).toBeInTheDocument();
+    });
+
+    // Verify socket.on was called to set up the lobby_state listener
+    expect(mockSocket.on).toHaveBeenCalledWith(
+      "lobby_state",
+      expect.any(Function)
+    );
+  });
+
+  it("updates lobby state when socket emits lobby_state event", async () => {
+    let lobbyStateCallback: ((lobby: unknown) => void) | undefined;
+
+    mockSocket.on.mockImplementation(
+      (event: string, callback: (lobby: unknown) => void) => {
+        if (event === "lobby_state") {
+          lobbyStateCallback = callback;
+        }
+      }
+    );
+
+    vi.mocked(setupDiscordSdk).mockResolvedValue({
+      auth: {
+        access_token: "test-token",
+        user: {
+          id: "1234567890123456789",
+          username: "testuser",
+          discriminator: "0001",
+          public_flags: 0,
+        },
+        scopes: ["identify" as const],
+        expires: "2025-12-15T20:00:00.000Z",
+        application: {
+          id: "app-123",
+          name: "Test App",
+          description: "A test Discord app",
+        },
+      },
+      lobby: {
+        instanceId: "test-instance-id",
+        createdAt: new Date().toISOString(),
+        players: [
+          {
+            userId: "1234567890123456789",
+            username: "testuser",
+            avatar: "https://example.com/avatar.png",
+          },
+        ],
+      },
+      socket: mockSocket as never,
+    });
+
+    render(<App />);
+
+    await waitFor(() => {
+      expect(screen.getByText("Players (1/5)")).toBeInTheDocument();
+    });
+
+    // Simulate a new player joining via socket event
+    const updatedLobby = {
+      instanceId: "test-instance-id",
+      createdAt: new Date().toISOString(),
+      players: [
+        {
+          userId: "1234567890123456789",
+          username: "testuser",
+          avatar: "https://example.com/avatar.png",
+        },
+        {
+          userId: "2345678901234567890",
+          username: "newplayer",
+          avatar: "https://example.com/avatar2.png",
+        },
+      ],
+    };
+
+    // Trigger the lobby_state callback
+    lobbyStateCallback!(updatedLobby);
+
+    // Wait for the UI to update
+    await waitFor(() => {
+      expect(screen.getByText("Players (2/5)")).toBeInTheDocument();
+    });
+
+    expect(screen.getByText("testuser")).toBeInTheDocument();
+    expect(screen.getByText("newplayer")).toBeInTheDocument();
   });
 });

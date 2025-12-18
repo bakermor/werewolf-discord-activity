@@ -14,8 +14,8 @@ dotenv.config({ path: "../.env" });
 export const app: Application = express();
 const port: number = Number(process.env.PORT) || 3001;
 
-const server = createServer(app);
-const io = new Server(server, {
+export const server = createServer(app);
+export const io = new Server(server, {
   path: "/api/socket.io",
   cors: {
     origin: true, // Allow all origins for now
@@ -135,6 +135,9 @@ app.post("/api/token", async (req: Request, res: Response) => {
   }
 });
 
-server.listen(port, () => {
-  console.log(`Server is listening on port ${port} !`);
-});
+// Only start the server if we're not in a test environment
+if (process.env.NODE_ENV === "production") {
+  server.listen(port, () => {
+    console.log(`Server is listening on port ${port} !`);
+  });
+}

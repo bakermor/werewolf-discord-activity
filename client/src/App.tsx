@@ -17,6 +17,7 @@ function App() {
 
         console.log("Discord SDK is ready");
         console.log("Auth:", auth);
+        console.log("Lobby:", lobby);
 
         setLobby(lobby);
         setSocket(socket);
@@ -25,15 +26,16 @@ function App() {
         socket.on("lobby_state", (state: LobbyState) => {
           setLobby(state);
         });
-      } catch (err: any) {
-        console.error("Discord SDK setup failed:", err);
-        setError(err.message);
+      } catch (error) {
+        console.error("Discord SDK setup failed:", error);
+        setError(error instanceof Error ? error.message : "Unknown error");
       } finally {
         setIsLoading(false);
       }
     };
 
     sdkSetup();
+    console.log("Socket:", socket);
   }, []);
 
   if (isLoading) {
