@@ -89,6 +89,21 @@ io.on("connection", (socket) => {
       players: lobby.players,
     });
   });
+
+  socket.on("disconnect", () => {
+    console.log(
+      `User ${socket.data.userId} disconnected from lobby ${socket.data.instanceId}`
+    );
+    // TODO: Handle reconnect leeway
+    const lobby = lobbies.get(socket.data.instanceId);
+    if (lobby) {
+      // Remove player from lobby
+      lobby.players = lobby.players.filter(
+        (player) => player.userId !== socket.data.userId
+      );
+      io.to(socket.data.instanceId).emit("lobby_state", lobby);
+    }
+  });
 });
 
 if (process.env.NODE_ENV === "production") {

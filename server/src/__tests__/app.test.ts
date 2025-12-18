@@ -366,13 +366,21 @@ describe("Socket.IO Lobby Management", () => {
     const state1 = await waitForSocketEvent<LobbyState>(socket1, "lobby_state");
     expect(state1.players).toHaveLength(1);
 
-    // Connect player 2
+    // Connect player 2 and set up listener for socket1 before emitting
     const socket2 = ioClient(serverUrl, {
       path: "/api/socket.io",
       transports: ["polling", "websocket"],
     });
 
     await waitForSocketEvent(socket2, "connect");
+
+    // Set up promise to listen for socket1's next state update before socket2 joins
+    const socket1StatePromise = waitForSocketEvent<LobbyState>(
+      socket1,
+      "lobby_state"
+    );
+
+    // Now have socket2 join
     socket2.emit("join_lobby", player2Data);
 
     // Wait for socket2 to receive state (should have both players)
@@ -383,14 +391,83 @@ describe("Socket.IO Lobby Management", () => {
     expect(state2Socket2.players).toHaveLength(2);
 
     // Wait for socket1 to receive broadcast update
-    const state2Socket1 = await waitForSocketEvent<LobbyState>(
-      socket1,
-      "lobby_state"
-    );
+    const state2Socket1 = await socket1StatePromise;
     expect(state2Socket1.players).toHaveLength(2);
 
     socket1.disconnect();
     socket2.disconnect();
+  });
+
+  it("removes player from lobby when they disconnect", async () => {
+    const instanceId = "disconnect-lobby";
+    const player1Data = {
+      instanceId,
+      userId: "user-1",
+      username: "player1",
+      avatar: "https://example.com/avatar1.png",
+    };
+
+    const player2Data = {
+      instanceId,
+      userId: "user-2",
+      username: "player2",
+      avatar: "https://example.com/avatar2.png",
+    };
+
+    const socket1 = ioClient(serverUrl, {
+      path: "/api/socket.io",
+      transports: ["polling", "websocket"],
+    });
+
+    const socket2 = ioClient(serverUrl, {
+      path: "/api/socket.io",
+      transports: ["polling", "websocket"],
+    });
+
+    // Connect both players
+    await Promise.all([
+      waitForSocketEvent(socket1, "connect"),
+      waitForSocketEvent(socket2, "connect"),
+    ]);
+
+    socket1.emit("join_lobby", player1Data);
+
+    // Wait for initial state (player1 only)
+    const state1 = await waitForSocketEvent<LobbyState>(socket1, "lobby_state");
+    expect(state1.players).toHaveLength(1);
+    expect(state1.players[0].userId).toBe("user-1");
+
+    // Player 2 joins
+    socket2.emit("join_lobby", player2Data);
+
+    // Wait for both players to be in lobby
+    const state2 = await waitForSocketEvent<LobbyState>(socket1, "lobby_state");
+    expect(state2.players).toHaveLength(2);
+    expect(state2.players).toContainEqual({
+      userId: "user-1",
+      username: "player1",
+      avatar: "https://example.com/avatar1.png",
+    });
+    expect(state2.players).toContainEqual({
+      userId: "user-2",
+      username: "player2",
+      avatar: "https://example.com/avatar2.png",
+    });
+
+    // Disconnect player 2
+    socket2.disconnect();
+
+    // Wait for socket1 to receive updated lobby state
+    const state3 = await waitForSocketEvent<LobbyState>(socket1, "lobby_state");
+    expect(state3.players).toHaveLength(1);
+    expect(state3.players[0]).toEqual({
+      userId: "user-1",
+      username: "player1",
+      avatar: "https://example.com/avatar1.png",
+    });
+
+    // Clean up
+    socket1.disconnect();
   });
 
   it("includes timestamp in lobby state", async () => {
