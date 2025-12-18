@@ -1,4 +1,5 @@
 import type { CommandResponse } from "@discord/embedded-app-sdk";
+import { io } from "socket.io-client";
 import { discordSdk } from "./discordSdk";
 
 type Auth = CommandResponse<"authenticate">;
@@ -76,31 +77,63 @@ export async function setupDiscordSdk() {
     }
 
     const { user } = auth;
-    const lobbyResponse = await fetch("/api/lobby", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        instanceId,
-        userId: user.id,
-        username: user.global_name ?? `${user.username}#${user.discriminator}`,
-        avatar: user.avatar
-          ? `https://cdn.discordapp.com/avatars/${user.id}/${user.avatar}.png?size=256`
-          : `https://cdn.discordapp.com/embed/avatars/${
-              (BigInt(user.id) >> 22n) % 6n
-            }.png`,
-      }),
+
+    const playerData = {
+      userId: user.id,
+      username: user.global_name ?? `${user.username}#${user.discriminator}`,
+      avatar: user.avatar
+        ? `https://cdn.discordapp.com/avatars/${user.id}/${user.avatar}.png?size=256`
+        : `https://cdn.discordapp.com/embed/avatars/${
+            (BigInt(user.id) >> 22n) % 6n
+          }.png`,
+    };
+
+    const socketUrl = window.location.origin;
+    console.log("Connecting to Socket.io:", socketUrl);
+
+    const socket = io(socketUrl, {
+      path: "/api/socket.io",
+      transports: ["polling", "websocket"],
+      reconnectionAttempts: 5,
+      reconnectionDelay: 1000,
+      timeout: 10000,
+      autoConnect: true,
     });
 
-    if (!lobbyResponse.ok) {
-      throw new Error(`Lobby endpoint returned ${lobbyResponse.status}`);
-    }
+    // Wait for socket to connect
+    const lobby = await new Promise<LobbyState>((resolve, reject) => {
+      const timeout = setTimeout(() => {
+        reject(new Error("Socket connection timeout"));
+      }, 15000);
 
-    const lobby = (await lobbyResponse.json()) as LobbyState;
-    console.log("Lobby initialized:", lobby);
+      socket.on("connect", () => {
+        console.log("Socket.io connected:", socket.id);
+        console.log("Transport:", socket.io.engine.transport.name);
+        clearTimeout(timeout);
 
-    return { auth, lobby };
+        // Join the lobby room
+        socket.emit("join_lobby", {
+          instanceId,
+          ...playerData,
+        });
+      });
+
+      socket.on("lobby_state", (state: LobbyState) => {
+        console.log("Received lobby state:", state);
+        clearTimeout(timeout);
+        resolve(state);
+      });
+
+      socket.on("connect_error", (error) => {
+        console.error("Socket connection error:", error);
+      });
+
+      socket.on("error", (error) => {
+        console.error("Socket error:", error);
+      });
+    });
+
+    return { auth, lobby, socket };
   } catch (error) {
     console.error("Discord SDK setup failed:", error);
     throw error;

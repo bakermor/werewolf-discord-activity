@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { Socket } from "socket.io-client";
 import styles from "./App.module.css";
 import type { LobbyState } from "./discordSetup";
 import { setupDiscordSdk } from "./discordSetup";
@@ -7,20 +8,34 @@ function App() {
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [lobby, setLobby] = useState<LobbyState | null>(null);
+  const [socket, setSocket] = useState<Socket | null>(null);
 
   useEffect(() => {
-    setupDiscordSdk()
-      .then(({ auth, lobby }) => {
+    const sdkSetup = async () => {
+      try {
+        const { auth, lobby, socket } = await setupDiscordSdk();
+
         console.log("Discord SDK is ready");
         console.log("Auth:", auth);
+        console.log("Lobby:", lobby);
+
         setLobby(lobby);
+        setSocket(socket);
+
+        // Set up socket event listeners
+        socket.on("lobby_state", (state: LobbyState) => {
+          setLobby(state);
+        });
+      } catch (error) {
+        console.error("Discord SDK setup failed:", error);
+        setError(error instanceof Error ? error.message : "Unknown error");
+      } finally {
         setIsLoading(false);
-      })
-      .catch((err) => {
-        console.error("Discord SDK setup failed:", err);
-        setError(err.message);
-        setIsLoading(false);
-      });
+      }
+    };
+
+    sdkSetup();
+    console.log("Socket:", socket);
   }, []);
 
   if (isLoading) {
