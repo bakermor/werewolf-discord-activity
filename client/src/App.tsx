@@ -81,6 +81,23 @@ function App() {
           <p className={styles.emptyState}>Waiting for players to join...</p>
         )}
       </div>
+
+      <div className={styles.rolesPanel}>
+        <h2 className={styles.rolesHeader}>Select Roles</h2>
+        <div className={styles.rolesGrid}>
+          {lobby?.availableRoles?.map((role) => (
+            <div key={role.id} className={styles.roleCard}>
+              <div
+                className={styles.rolePlaceholder}
+                data-testid="role-placeholder"
+              >
+                ?
+              </div>
+              <span className={styles.roleName}>{role.name}</span>
+            </div>
+          ))}
+        </div>
+      </div>
     </div>
   );
 }
