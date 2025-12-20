@@ -120,8 +120,22 @@ describe("Socket.IO Lobby Management", () => {
   });
 
   afterAll(async () => {
-    return new Promise<void>((resolve) => {
-      server.close(() => resolve());
+    // Give any remaining socket operations time to complete
+    await new Promise((resolve) => setTimeout(resolve, 500));
+
+    return new Promise<void>((resolve, reject) => {
+      const timeout = setTimeout(() => {
+        reject(new Error("Server close timeout"));
+      }, 5000);
+
+      server.close((err) => {
+        clearTimeout(timeout);
+        if (err) {
+          reject(err);
+        } else {
+          resolve();
+        }
+      });
     });
   });
 
@@ -701,43 +715,50 @@ describe("Socket.IO Lobby Management", () => {
         transports: ["polling", "websocket"],
       });
 
-      const socket2 = ioClient(serverUrl, {
-        path: "/api/socket.io",
-        transports: ["polling", "websocket"],
-      });
+      let socket2: ClientSocket | undefined;
 
-      await waitForSocketEvent(socket1, "connect");
-      socket1.emit("join_lobby", {
-        instanceId: "role-persist-lobby",
-        userId: "user-1",
-        username: "player1",
-        avatar: "https://example.com/avatar1.png",
-      });
+      try {
+        await waitForSocketEvent(socket1, "connect");
+        socket1.emit("join_lobby", {
+          instanceId: "role-persist-lobby",
+          userId: "user-1",
+          username: "player1",
+          avatar: "https://example.com/avatar1.png",
+        });
 
-      const state1 = await waitForSocketEvent<LobbyState>(
-        socket1,
-        "lobby_state"
-      );
+        const state1 = await waitForSocketEvent<LobbyState>(
+          socket1,
+          "lobby_state"
+        );
 
-      await waitForSocketEvent(socket2, "connect");
-      socket2.emit("join_lobby", {
-        instanceId: "role-persist-lobby",
-        userId: "user-2",
-        username: "player2",
-        avatar: "https://example.com/avatar2.png",
-      });
+        // Create socket2 after socket1 has joined successfully
+        socket2 = ioClient(serverUrl, {
+          path: "/api/socket.io",
+          transports: ["polling", "websocket"],
+        });
 
-      const state2 = await waitForSocketEvent<LobbyState>(
-        socket2,
-        "lobby_state"
-      );
+        await waitForSocketEvent(socket2, "connect");
+        socket2.emit("join_lobby", {
+          instanceId: "role-persist-lobby",
+          userId: "user-2",
+          username: "player2",
+          avatar: "https://example.com/avatar2.png",
+        });
 
-      // Verify both clients receive identical role configuration
-      expect(state2.availableRoles).toEqual(state1.availableRoles);
-      expect(state2.selectedRoles).toEqual(state1.selectedRoles);
+        const state2 = await waitForSocketEvent<LobbyState>(
+          socket2,
+          "lobby_state"
+        );
 
-      socket1.disconnect();
-      socket2.disconnect();
+        // Verify both clients receive identical role configuration
+        expect(state2.availableRoles).toEqual(state1.availableRoles);
+        expect(state2.selectedRoles).toEqual(state1.selectedRoles);
+      } finally {
+        socket2?.disconnect();
+        socket1.disconnect();
+        // Give sockets time to clean up
+        await new Promise((resolve) => setTimeout(resolve, 100));
+      }
     });
 
     it("role configuration is immutable on player disconnect", async () => {
@@ -763,10 +784,7 @@ describe("Socket.IO Lobby Management", () => {
         avatar: "https://example.com/avatar1.png",
       });
 
-      const state1 = await waitForSocketEvent<LobbyState>(
-        socket1,
-        "lobby_state"
-      );
+      await waitForSocketEvent<LobbyState>(socket1, "lobby_state");
 
       socket2.emit("join_lobby", {
         instanceId: "role-immutable-lobby",
