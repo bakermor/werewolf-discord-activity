@@ -10,10 +10,17 @@ export interface Player {
   avatar: string;
 }
 
+export interface Role {
+  id: string;
+  name: string;
+}
+
 export interface LobbyState {
   instanceId: string;
   createdAt: string;
   players: Player[];
+  availableRoles: Role[];
+  selectedRoles: string[];
 }
 
 let auth: Auth;

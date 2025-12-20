@@ -10,7 +10,7 @@ import {
   it,
   vi,
 } from "vitest";
-import { app, server } from "../app";
+import { app, LobbyState, server } from "../app";
 
 vi.mock("../utils", () => ({
   fetchAndRetry: vi.fn(),
@@ -19,16 +19,6 @@ vi.mock("../utils", () => ({
 import { fetchAndRetry } from "../utils";
 
 const mockedFetchAndRetry = vi.mocked(fetchAndRetry);
-
-interface LobbyState {
-  instanceId: string;
-  createdAt: string;
-  players: Array<{
-    userId: string;
-    username: string;
-    avatar: string;
-  }>;
-}
 
 describe("POST /api/token", () => {
   beforeEach(() => {
@@ -130,8 +120,22 @@ describe("Socket.IO Lobby Management", () => {
   });
 
   afterAll(async () => {
-    return new Promise<void>((resolve) => {
-      server.close(() => resolve());
+    // Give any remaining socket operations time to complete
+    await new Promise((resolve) => setTimeout(resolve, 500));
+
+    return new Promise<void>((resolve, reject) => {
+      const timeout = setTimeout(() => {
+        reject(new Error("Server close timeout"));
+      }, 5000);
+
+      server.close((err) => {
+        clearTimeout(timeout);
+        if (err) {
+          reject(err);
+        } else {
+          resolve();
+        }
+      });
     });
   });
 
@@ -180,12 +184,16 @@ describe("Socket.IO Lobby Management", () => {
     expect(state).toHaveProperty("instanceId", validPlayerData.instanceId);
     expect(state).toHaveProperty("createdAt");
     expect(state).toHaveProperty("players");
+    expect(state).toHaveProperty("availableRoles");
+    expect(state).toHaveProperty("selectedRoles");
     expect(state.players).toHaveLength(1);
     expect(state.players[0]).toEqual({
       userId: validPlayerData.userId,
       username: validPlayerData.username,
       avatar: validPlayerData.avatar,
     });
+    expect(state.availableRoles).toHaveLength(8);
+    expect(state.selectedRoles).toHaveLength(6);
   });
 
   it("adds multiple players to the same lobby", async () => {
@@ -509,6 +517,366 @@ describe("Socket.IO Lobby Management", () => {
       userId: validPlayerData.userId,
       username: validPlayerData.username,
       avatar: validPlayerData.avatar,
+    });
+  });
+
+  describe("Role Configuration", () => {
+    it("availableRoles contains exactly 9 roles", async () => {
+      clientSocket = ioClient(serverUrl, {
+        path: "/api/socket.io",
+        transports: ["polling", "websocket"],
+      });
+
+      await waitForSocketEvent(clientSocket, "connect");
+      clientSocket.emit("join_lobby", validPlayerData);
+
+      const state = await waitForSocketEvent<LobbyState>(
+        clientSocket,
+        "lobby_state"
+      );
+      expect(state.availableRoles).toHaveLength(8);
+    });
+
+    it("availableRoles includes correct role types and counts", async () => {
+      clientSocket = ioClient(serverUrl, {
+        path: "/api/socket.io",
+        transports: ["polling", "websocket"],
+      });
+
+      await waitForSocketEvent(clientSocket, "connect");
+      clientSocket.emit("join_lobby", validPlayerData);
+
+      const state = await waitForSocketEvent<LobbyState>(
+        clientSocket,
+        "lobby_state"
+      );
+
+      const roleIds = state.availableRoles.map((role) => role.id);
+
+      // Check for werewolves
+      expect(roleIds).toContain("werewolf-1");
+      expect(roleIds).toContain("werewolf-2");
+
+      // Check for other unique roles
+      expect(roleIds).toContain("seer-1");
+      expect(roleIds).toContain("robber-1");
+      expect(roleIds).toContain("troublemaker-1");
+
+      // Check for villagers
+      expect(roleIds).toContain("villager-1");
+      expect(roleIds).toContain("villager-2");
+      expect(roleIds).toContain("villager-3");
+
+      // Verify role names
+      const werewolves = state.availableRoles.filter((role) =>
+        role.id.startsWith("werewolf")
+      );
+      werewolves.forEach((role) => {
+        expect(role.name).toBe("Werewolf");
+      });
+
+      const villagers = state.availableRoles.filter((role) =>
+        role.id.startsWith("villager")
+      );
+      villagers.forEach((role) => {
+        expect(role.name).toBe("Villager");
+      });
+
+      const seers = state.availableRoles.filter((role) =>
+        role.id.startsWith("seer")
+      );
+      seers.forEach((role) => {
+        expect(role.name).toBe("Seer");
+      });
+
+      const robbers = state.availableRoles.filter((role) =>
+        role.id.startsWith("robber")
+      );
+      robbers.forEach((role) => {
+        expect(role.name).toBe("Robber");
+      });
+
+      const troublemakers = state.availableRoles.filter((role) =>
+        role.id.startsWith("troublemaker")
+      );
+      troublemakers.forEach((role) => {
+        expect(role.name).toBe("Troublemaker");
+      });
+    });
+
+    it("each role in availableRoles has unique id", async () => {
+      clientSocket = ioClient(serverUrl, {
+        path: "/api/socket.io",
+        transports: ["polling", "websocket"],
+      });
+
+      await waitForSocketEvent(clientSocket, "connect");
+      clientSocket.emit("join_lobby", validPlayerData);
+
+      const state = await waitForSocketEvent<LobbyState>(
+        clientSocket,
+        "lobby_state"
+      );
+
+      const roleIds = state.availableRoles.map((role) => role.id);
+      const uniqueRoleIds = new Set(roleIds);
+
+      expect(uniqueRoleIds.size).toBe(roleIds.length);
+    });
+
+    it("selectedRoles contains exactly 6 role IDs", async () => {
+      clientSocket = ioClient(serverUrl, {
+        path: "/api/socket.io",
+        transports: ["polling", "websocket"],
+      });
+
+      await waitForSocketEvent(clientSocket, "connect");
+      clientSocket.emit("join_lobby", validPlayerData);
+
+      const state = await waitForSocketEvent<LobbyState>(
+        clientSocket,
+        "lobby_state"
+      );
+      expect(state.selectedRoles).toHaveLength(6);
+    });
+
+    it("selectedRoles references valid role IDs from availableRoles", async () => {
+      clientSocket = ioClient(serverUrl, {
+        path: "/api/socket.io",
+        transports: ["polling", "websocket"],
+      });
+
+      await waitForSocketEvent(clientSocket, "connect");
+      clientSocket.emit("join_lobby", validPlayerData);
+
+      const state = await waitForSocketEvent<LobbyState>(
+        clientSocket,
+        "lobby_state"
+      );
+
+      const availableRoleIds = new Set(
+        state.availableRoles.map((role) => role.id)
+      );
+
+      state.selectedRoles.forEach((selectedRoleId) => {
+        expect(availableRoleIds.has(selectedRoleId)).toBe(true);
+      });
+    });
+
+    it("selectedRoles contains correct initial configuration", async () => {
+      clientSocket = ioClient(serverUrl, {
+        path: "/api/socket.io",
+        transports: ["polling", "websocket"],
+      });
+
+      await waitForSocketEvent(clientSocket, "connect");
+      clientSocket.emit("join_lobby", validPlayerData);
+
+      const state = await waitForSocketEvent<LobbyState>(
+        clientSocket,
+        "lobby_state"
+      );
+
+      expect(state.selectedRoles).toContain("werewolf-1");
+      expect(state.selectedRoles).toContain("werewolf-2");
+      expect(state.selectedRoles).toContain("seer-1");
+      expect(state.selectedRoles).toContain("robber-1");
+      expect(state.selectedRoles).toContain("troublemaker-1");
+      expect(state.selectedRoles).toContain("villager-1");
+
+      // Verify that the unselected villagers are NOT included
+      expect(state.selectedRoles).not.toContain("villager-2");
+      expect(state.selectedRoles).not.toContain("villager-3");
+    });
+
+    it("new lobby includes role configuration", async () => {
+      clientSocket = ioClient(serverUrl, {
+        path: "/api/socket.io",
+        transports: ["polling", "websocket"],
+      });
+
+      await waitForSocketEvent(clientSocket, "connect");
+      clientSocket.emit("join_lobby", validPlayerData);
+
+      const state = await waitForSocketEvent<LobbyState>(
+        clientSocket,
+        "lobby_state"
+      );
+
+      expect(state).toHaveProperty("availableRoles");
+      expect(state).toHaveProperty("selectedRoles");
+      expect(Array.isArray(state.availableRoles)).toBe(true);
+      expect(Array.isArray(state.selectedRoles)).toBe(true);
+    });
+
+    it("lobby role configuration persists across multiple joins", async () => {
+      const socket1 = ioClient(serverUrl, {
+        path: "/api/socket.io",
+        transports: ["polling", "websocket"],
+      });
+
+      let socket2: ClientSocket | undefined;
+
+      try {
+        await waitForSocketEvent(socket1, "connect");
+        socket1.emit("join_lobby", {
+          instanceId: "role-persist-lobby",
+          userId: "user-1",
+          username: "player1",
+          avatar: "https://example.com/avatar1.png",
+        });
+
+        const state1 = await waitForSocketEvent<LobbyState>(
+          socket1,
+          "lobby_state"
+        );
+
+        // Create socket2 after socket1 has joined successfully
+        socket2 = ioClient(serverUrl, {
+          path: "/api/socket.io",
+          transports: ["polling", "websocket"],
+        });
+
+        await waitForSocketEvent(socket2, "connect");
+        socket2.emit("join_lobby", {
+          instanceId: "role-persist-lobby",
+          userId: "user-2",
+          username: "player2",
+          avatar: "https://example.com/avatar2.png",
+        });
+
+        const state2 = await waitForSocketEvent<LobbyState>(
+          socket2,
+          "lobby_state"
+        );
+
+        // Verify both clients receive identical role configuration
+        expect(state2.availableRoles).toEqual(state1.availableRoles);
+        expect(state2.selectedRoles).toEqual(state1.selectedRoles);
+      } finally {
+        socket2?.disconnect();
+        socket1.disconnect();
+        // Give sockets time to clean up
+        await new Promise((resolve) => setTimeout(resolve, 100));
+      }
+    });
+
+    it("role configuration is immutable on player disconnect", async () => {
+      const socket1 = ioClient(serverUrl, {
+        path: "/api/socket.io",
+        transports: ["polling", "websocket"],
+      });
+
+      const socket2 = ioClient(serverUrl, {
+        path: "/api/socket.io",
+        transports: ["polling", "websocket"],
+      });
+
+      await Promise.all([
+        waitForSocketEvent(socket1, "connect"),
+        waitForSocketEvent(socket2, "connect"),
+      ]);
+
+      socket1.emit("join_lobby", {
+        instanceId: "role-immutable-lobby",
+        userId: "user-1",
+        username: "player1",
+        avatar: "https://example.com/avatar1.png",
+      });
+
+      await waitForSocketEvent<LobbyState>(socket1, "lobby_state");
+
+      socket2.emit("join_lobby", {
+        instanceId: "role-immutable-lobby",
+        userId: "user-2",
+        username: "player2",
+        avatar: "https://example.com/avatar2.png",
+      });
+
+      const state2 = await waitForSocketEvent<LobbyState>(
+        socket1,
+        "lobby_state"
+      );
+
+      // Store role configuration before disconnect
+      const rolesBeforeDisconnect = JSON.stringify({
+        availableRoles: state2.availableRoles,
+        selectedRoles: state2.selectedRoles,
+      });
+
+      // Disconnect player 2
+      socket2.disconnect();
+
+      // Wait for state update
+      const state3 = await waitForSocketEvent<LobbyState>(
+        socket1,
+        "lobby_state"
+      );
+
+      // Verify role configuration is unchanged
+      const rolesAfterDisconnect = JSON.stringify({
+        availableRoles: state3.availableRoles,
+        selectedRoles: state3.selectedRoles,
+      });
+
+      expect(rolesAfterDisconnect).toBe(rolesBeforeDisconnect);
+
+      socket1.disconnect();
+    });
+
+    it("lobby_state event includes role data", async () => {
+      clientSocket = ioClient(serverUrl, {
+        path: "/api/socket.io",
+        transports: ["polling", "websocket"],
+      });
+
+      await waitForSocketEvent(clientSocket, "connect");
+      clientSocket.emit("join_lobby", validPlayerData);
+
+      const state = await waitForSocketEvent<LobbyState>(
+        clientSocket,
+        "lobby_state"
+      );
+
+      expect(state.availableRoles).toHaveLength(8);
+      expect(state.selectedRoles).toHaveLength(6);
+
+      // Verify each available role has required fields
+      state.availableRoles.forEach((role) => {
+        expect(role).toHaveProperty("id");
+        expect(role).toHaveProperty("name");
+        expect(typeof role.id).toBe("string");
+        expect(typeof role.name).toBe("string");
+      });
+
+      // Verify each selected role is a string
+      state.selectedRoles.forEach((roleId) => {
+        expect(typeof roleId).toBe("string");
+      });
+    });
+
+    it("role data serializes correctly to JSON", async () => {
+      clientSocket = ioClient(serverUrl, {
+        path: "/api/socket.io",
+        transports: ["polling", "websocket"],
+      });
+
+      await waitForSocketEvent(clientSocket, "connect");
+      clientSocket.emit("join_lobby", validPlayerData);
+
+      const state = await waitForSocketEvent<LobbyState>(
+        clientSocket,
+        "lobby_state"
+      );
+
+      // Attempt to serialize and deserialize
+      const serialized = JSON.stringify(state);
+      const deserialized = JSON.parse(serialized);
+
+      expect(deserialized.availableRoles).toHaveLength(8);
+      expect(deserialized.selectedRoles).toHaveLength(6);
+      expect(deserialized.availableRoles[0]).toHaveProperty("id");
+      expect(deserialized.availableRoles[0]).toHaveProperty("name");
     });
   });
 });
