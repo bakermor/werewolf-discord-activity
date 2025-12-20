@@ -34,11 +34,47 @@ interface Player {
   avatar: string;
 }
 
+// Role interface
+interface Role {
+  id: string;
+  name: string;
+}
+
 // Lobby state type
-interface LobbyState {
+export interface LobbyState {
   instanceId: string;
   createdAt: Date;
   players: Player[];
+  availableRoles: Role[];
+  selectedRoles: string[];
+}
+
+// Helper function to create default role configuration
+function createDefaultRoles(): {
+  availableRoles: Role[];
+  selectedRoles: string[];
+} {
+  const availableRoles: Role[] = [
+    { id: "werewolf-1", name: "Werewolf" },
+    { id: "werewolf-2", name: "Werewolf" },
+    { id: "seer-1", name: "Seer" },
+    { id: "robber-1", name: "Robber" },
+    { id: "troublemaker-1", name: "Troublemaker" },
+    { id: "villager-1", name: "Villager" },
+    { id: "villager-2", name: "Villager" },
+    { id: "villager-3", name: "Villager" },
+  ];
+
+  const selectedRoles: string[] = [
+    "werewolf-1",
+    "werewolf-2",
+    "seer-1",
+    "robber-1",
+    "troublemaker-1",
+    "villager-1",
+  ];
+
+  return { availableRoles, selectedRoles };
 }
 
 // In-memory store for lobbies: Map<instanceId, LobbyState>
@@ -69,11 +105,14 @@ io.on("connection", (socket) => {
     // Check if lobby already exists
     let lobby = lobbies.get(instanceId);
     if (!lobby) {
-      // Create new lobby with empty players array
+      // Create new lobby with empty players array and default role configuration
+      const { availableRoles, selectedRoles } = createDefaultRoles();
       lobby = {
         instanceId,
         createdAt: new Date(),
         players: [],
+        availableRoles,
+        selectedRoles,
       };
       lobbies.set(instanceId, lobby);
     }
@@ -87,6 +126,8 @@ io.on("connection", (socket) => {
       instanceId: lobby.instanceId,
       createdAt: lobby.createdAt.toISOString(),
       players: lobby.players,
+      availableRoles: lobby.availableRoles,
+      selectedRoles: lobby.selectedRoles,
     });
   });
 
@@ -101,7 +142,13 @@ io.on("connection", (socket) => {
       lobby.players = lobby.players.filter(
         (player) => player.userId !== socket.data.userId
       );
-      io.to(socket.data.instanceId).emit("lobby_state", lobby);
+      io.to(socket.data.instanceId).emit("lobby_state", {
+        instanceId: lobby.instanceId,
+        createdAt: lobby.createdAt.toISOString(),
+        players: lobby.players,
+        availableRoles: lobby.availableRoles,
+        selectedRoles: lobby.selectedRoles,
+      });
     }
   });
 });
