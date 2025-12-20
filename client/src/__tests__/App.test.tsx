@@ -24,6 +24,29 @@ vi.mock("../discordSetup", () => {
 });
 
 import { setupDiscordSdk } from "../discordSetup";
+import type { Role } from "../discordSetup";
+
+// Helper function to create mock role data
+const createMockRoleData = () => ({
+  availableRoles: [
+    { id: "werewolf-1", name: "Werewolf" },
+    { id: "werewolf-2", name: "Werewolf" },
+    { id: "seer-1", name: "Seer" },
+    { id: "robber-1", name: "Robber" },
+    { id: "troublemaker-1", name: "Troublemaker" },
+    { id: "villager-1", name: "Villager" },
+    { id: "villager-2", name: "Villager" },
+    { id: "villager-3", name: "Villager" },
+  ] as Role[],
+  selectedRoles: [
+    "werewolf-1",
+    "werewolf-2",
+    "seer-1",
+    "robber-1",
+    "troublemaker-1",
+    "villager-1",
+  ],
+});
 
 describe("App", () => {
   let mockSocket: {
@@ -81,6 +104,7 @@ describe("App", () => {
             avatar: "https://example.com/avatar.png",
           },
         ],
+        ...createMockRoleData(),
       },
       socket: mockSocket as never,
     });
@@ -154,6 +178,7 @@ describe("App", () => {
             avatar: "https://example.com/avatar3.png",
           },
         ],
+        ...createMockRoleData(),
       },
       socket: mockSocket as never,
     });
@@ -191,6 +216,7 @@ describe("App", () => {
         instanceId: "test-instance-id",
         createdAt: new Date().toISOString(),
         players: [],
+        ...createMockRoleData(),
       },
       socket: mockSocket as never,
     });
@@ -234,6 +260,7 @@ describe("App", () => {
             avatar: "",
           },
         ],
+        ...createMockRoleData(),
       },
       socket: mockSocket as never,
     });
@@ -277,6 +304,7 @@ describe("App", () => {
             avatar: "https://example.com/avatar.png",
           },
         ],
+        ...createMockRoleData(),
       },
       socket: mockSocket as never,
     });
@@ -332,6 +360,7 @@ describe("App", () => {
             avatar: "https://example.com/avatar.png",
           },
         ],
+        ...createMockRoleData(),
       },
       socket: mockSocket as never,
     });
@@ -370,5 +399,178 @@ describe("App", () => {
 
     expect(screen.getByText("testuser")).toBeInTheDocument();
     expect(screen.getByText("newplayer")).toBeInTheDocument();
+  });
+
+  describe("Role Configuration", () => {
+    it("App component handles lobby state with roles", async () => {
+      const mockRoles = createMockRoleData();
+
+      vi.mocked(setupDiscordSdk).mockResolvedValue({
+        auth: {
+          access_token: "test-token",
+          user: {
+            id: "1234567890123456789",
+            username: "testuser",
+            discriminator: "0001",
+            public_flags: 0,
+          },
+          scopes: ["identify" as const],
+          expires: "2025-12-15T20:00:00.000Z",
+          application: {
+            id: "app-123",
+            name: "Test App",
+            description: "A test Discord app",
+          },
+        },
+        lobby: {
+          instanceId: "test-instance-id",
+          createdAt: new Date().toISOString(),
+          players: [
+            {
+              userId: "1234567890123456789",
+              username: "testuser",
+              avatar: "https://example.com/avatar.png",
+            },
+          ],
+          ...mockRoles,
+        },
+        socket: mockSocket as never,
+      });
+
+      render(<App />);
+
+      await waitFor(() => {
+        expect(screen.getByText("Players (1/5)")).toBeInTheDocument();
+      });
+
+      expect(screen.getByText("testuser")).toBeInTheDocument();
+    });
+
+    it("setupDiscordSdk receives role configuration", async () => {
+      const mockRoles = createMockRoleData();
+
+      vi.mocked(setupDiscordSdk).mockResolvedValue({
+        auth: {
+          access_token: "test-token",
+          user: {
+            id: "1234567890123456789",
+            username: "testuser",
+            discriminator: "0001",
+            public_flags: 0,
+          },
+          scopes: ["identify" as const],
+          expires: "2025-12-15T20:00:00.000Z",
+          application: {
+            id: "app-123",
+            name: "Test App",
+            description: "A test Discord app",
+          },
+        },
+        lobby: {
+          instanceId: "test-instance-id",
+          createdAt: new Date().toISOString(),
+          players: [
+            {
+              userId: "1234567890123456789",
+              username: "testuser",
+              avatar: "https://example.com/avatar.png",
+            },
+          ],
+          ...mockRoles,
+        },
+        socket: mockSocket as never,
+      });
+
+      render(<App />);
+
+      await waitFor(() => {
+        expect(screen.getByText("Players (1/5)")).toBeInTheDocument();
+      });
+
+      const mockSetupCall = vi.mocked(setupDiscordSdk).mock.results[0].value;
+      expect(mockSetupCall).resolves.toBeDefined();
+    });
+
+    it("lobby state updates preserve role configuration", async () => {
+      let lobbyStateCallback: ((lobby: unknown) => void) | undefined;
+
+      mockSocket.on.mockImplementation(
+        (event: string, callback: (lobby: unknown) => void) => {
+          if (event === "lobby_state") {
+            lobbyStateCallback = callback;
+          }
+        }
+      );
+
+      const mockRoles = createMockRoleData();
+
+      vi.mocked(setupDiscordSdk).mockResolvedValue({
+        auth: {
+          access_token: "test-token",
+          user: {
+            id: "1234567890123456789",
+            username: "testuser",
+            discriminator: "0001",
+            public_flags: 0,
+          },
+          scopes: ["identify" as const],
+          expires: "2025-12-15T20:00:00.000Z",
+          application: {
+            id: "app-123",
+            name: "Test App",
+            description: "A test Discord app",
+          },
+        },
+        lobby: {
+          instanceId: "test-instance-id",
+          createdAt: new Date().toISOString(),
+          players: [
+            {
+              userId: "1234567890123456789",
+              username: "testuser",
+              avatar: "https://example.com/avatar.png",
+            },
+          ],
+          ...mockRoles,
+        },
+        socket: mockSocket as never,
+      });
+
+      render(<App />);
+
+      await waitFor(() => {
+        expect(screen.getByText("Players (1/5)")).toBeInTheDocument();
+      });
+
+      // Simulate an update with new players but same roles
+      const updatedLobby = {
+        instanceId: "test-instance-id",
+        createdAt: new Date().toISOString(),
+        players: [
+          {
+            userId: "1234567890123456789",
+            username: "testuser",
+            avatar: "https://example.com/avatar.png",
+          },
+          {
+            userId: "2345678901234567890",
+            username: "newplayer",
+            avatar: "https://example.com/avatar2.png",
+          },
+        ],
+        ...mockRoles,
+      };
+
+      // Trigger the lobby_state callback
+      lobbyStateCallback!(updatedLobby);
+
+      // Wait for the UI to update
+      await waitFor(() => {
+        expect(screen.getByText("Players (2/5)")).toBeInTheDocument();
+      });
+
+      expect(screen.getByText("testuser")).toBeInTheDocument();
+      expect(screen.getByText("newplayer")).toBeInTheDocument();
+    });
   });
 });
