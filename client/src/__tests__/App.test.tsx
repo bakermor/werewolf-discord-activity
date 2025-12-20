@@ -402,7 +402,7 @@ describe("App", () => {
   });
 
   describe("Role Configuration", () => {
-    it("App component handles lobby state with roles", async () => {
+    it("handles lobby state with roles", async () => {
       const mockRoles = createMockRoleData();
 
       vi.mocked(setupDiscordSdk).mockResolvedValue({
@@ -446,7 +446,7 @@ describe("App", () => {
       expect(screen.getByText("testuser")).toBeInTheDocument();
     });
 
-    it("setupDiscordSdk receives role configuration", async () => {
+    it("receives role configuration", async () => {
       const mockRoles = createMockRoleData();
 
       vi.mocked(setupDiscordSdk).mockResolvedValue({
@@ -491,7 +491,7 @@ describe("App", () => {
       expect(mockSetupCall).resolves.toBeDefined();
     });
 
-    it("lobby state updates preserve role configuration", async () => {
+    it("preserves role configuration when lobby state updates ", async () => {
       let lobbyStateCallback: ((lobby: unknown) => void) | undefined;
 
       mockSocket.on.mockImplementation(
@@ -571,6 +571,227 @@ describe("App", () => {
 
       expect(screen.getByText("testuser")).toBeInTheDocument();
       expect(screen.getByText("newplayer")).toBeInTheDocument();
+    });
+  });
+
+  describe("Role Selection UI", () => {
+    const createMockAuth = () => ({
+      access_token: "test-token",
+      user: {
+        id: "1234567890123456789",
+        username: "testuser",
+        discriminator: "0001",
+        public_flags: 0,
+      },
+      scopes: ["identify" as const],
+      expires: "2025-12-15T20:00:00.000Z",
+      application: {
+        id: "app-123",
+        name: "Test App",
+        description: "A test Discord app",
+      },
+    });
+
+    it("renders 'Select Roles' header when lobby data is loaded", async () => {
+      vi.mocked(setupDiscordSdk).mockResolvedValue({
+        auth: createMockAuth(),
+        lobby: {
+          instanceId: "test-instance-id",
+          createdAt: new Date().toISOString(),
+          players: [
+            {
+              userId: "1234567890123456789",
+              username: "testuser",
+              avatar: "https://example.com/avatar.png",
+            },
+          ],
+          ...createMockRoleData(),
+        },
+        socket: mockSocket as never,
+      });
+
+      render(<App />);
+
+      await waitFor(() => {
+        expect(screen.getByText("Select Roles")).toBeInTheDocument();
+      });
+    });
+
+    it("matches the backend-provided role list exactly", async () => {
+      const mockRoles = createMockRoleData();
+      vi.mocked(setupDiscordSdk).mockResolvedValue({
+        auth: createMockAuth(),
+        lobby: {
+          instanceId: "test-instance-id",
+          createdAt: new Date().toISOString(),
+          players: [
+            {
+              userId: "1234567890123456789",
+              username: "testuser",
+              avatar: "https://example.com/avatar.png",
+            },
+          ],
+          ...mockRoles,
+        },
+        socket: mockSocket as never,
+      });
+
+      render(<App />);
+
+      await waitFor(() => {
+        expect(screen.getByText("Select Roles")).toBeInTheDocument();
+      });
+
+      // Verify all role names from backend are present
+      const roleNamesCount: { [key: string]: number } = {};
+      mockRoles.availableRoles.forEach((role) => {
+        roleNamesCount[role.name] = (roleNamesCount[role.name] || 0) + 1;
+      });
+
+      Object.entries(roleNamesCount).forEach(([roleName, count]) => {
+        const elements = screen.getAllByText(roleName);
+        expect(elements).toHaveLength(count);
+      });
+    });
+
+    it("displays the correct role name", async () => {
+      const mockRoles = createMockRoleData();
+      vi.mocked(setupDiscordSdk).mockResolvedValue({
+        auth: createMockAuth(),
+        lobby: {
+          instanceId: "test-instance-id",
+          createdAt: new Date().toISOString(),
+          players: [
+            {
+              userId: "1234567890123456789",
+              username: "testuser",
+              avatar: "https://example.com/avatar.png",
+            },
+          ],
+          ...mockRoles,
+        },
+        socket: mockSocket as never,
+      });
+
+      render(<App />);
+
+      await waitFor(() => {
+        expect(screen.getByText("Select Roles")).toBeInTheDocument();
+      });
+
+      // Check that each role name is displayed
+      expect(screen.getAllByText("Werewolf")).toHaveLength(2);
+      expect(screen.getByText("Seer")).toBeInTheDocument();
+      expect(screen.getByText("Robber")).toBeInTheDocument();
+      expect(screen.getByText("Troublemaker")).toBeInTheDocument();
+      expect(screen.getAllByText("Villager")).toHaveLength(3);
+    });
+
+    it("updates role cards when socket emits new lobby_state with different roles", async () => {
+      let lobbyStateCallback: ((lobby: unknown) => void) | undefined;
+
+      mockSocket.on.mockImplementation(
+        (event: string, callback: (lobby: unknown) => void) => {
+          if (event === "lobby_state") {
+            lobbyStateCallback = callback;
+          }
+        }
+      );
+
+      const initialRoles = createMockRoleData();
+      vi.mocked(setupDiscordSdk).mockResolvedValue({
+        auth: createMockAuth(),
+        lobby: {
+          instanceId: "test-instance-id",
+          createdAt: new Date().toISOString(),
+          players: [
+            {
+              userId: "1234567890123456789",
+              username: "testuser",
+              avatar: "https://example.com/avatar.png",
+            },
+          ],
+          ...initialRoles,
+        },
+        socket: mockSocket as never,
+      });
+
+      render(<App />);
+
+      await waitFor(() => {
+        expect(screen.getByText("Select Roles")).toBeInTheDocument();
+      });
+
+      // Initial state: 8 roles
+      expect(screen.getAllByTestId("role-placeholder")).toHaveLength(8);
+
+      // Update with different roles
+      const updatedLobby = {
+        instanceId: "test-instance-id",
+        createdAt: new Date().toISOString(),
+        players: [
+          {
+            userId: "1234567890123456789",
+            username: "testuser",
+            avatar: "https://example.com/avatar.png",
+          },
+        ],
+        availableRoles: [
+          { id: "werewolf-1", name: "Werewolf" },
+          { id: "seer-1", name: "Seer" },
+          { id: "villager-1", name: "Villager" },
+        ],
+        selectedRoles: ["werewolf-1", "seer-1"],
+      };
+
+      lobbyStateCallback!(updatedLobby);
+
+      await waitFor(() => {
+        expect(screen.getAllByTestId("role-placeholder")).toHaveLength(3);
+      });
+
+      expect(screen.getByText("Werewolf")).toBeInTheDocument();
+      expect(screen.getByText("Seer")).toBeInTheDocument();
+      expect(screen.getByText("Villager")).toBeInTheDocument();
+    });
+
+    it("handles missing role names gracefully", async () => {
+      const rolesWithMissingName = {
+        availableRoles: [
+          { id: "werewolf-1", name: "Werewolf" },
+          { id: "unknown-1", name: "" },
+          { id: "villager-1", name: "Villager" },
+        ] as Role[],
+        selectedRoles: ["werewolf-1"],
+      };
+
+      vi.mocked(setupDiscordSdk).mockResolvedValue({
+        auth: createMockAuth(),
+        lobby: {
+          instanceId: "test-instance-id",
+          createdAt: new Date().toISOString(),
+          players: [
+            {
+              userId: "1234567890123456789",
+              username: "testuser",
+              avatar: "https://example.com/avatar.png",
+            },
+          ],
+          ...rolesWithMissingName,
+        },
+        socket: mockSocket as never,
+      });
+
+      render(<App />);
+
+      await waitFor(() => {
+        expect(screen.getByText("Select Roles")).toBeInTheDocument();
+      });
+
+      // Should still render all role cards
+      expect(screen.getAllByTestId("role-placeholder")).toHaveLength(3);
+      expect(screen.getByText("Werewolf")).toBeInTheDocument();
+      expect(screen.getByText("Villager")).toBeInTheDocument();
     });
   });
 });
