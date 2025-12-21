@@ -47,6 +47,7 @@ export interface LobbyState {
   players: Player[];
   availableRoles: Role[];
   selectedRoles: string[];
+  isRoleConfigValid: boolean;
 }
 
 // Helper function to create default role configuration
@@ -88,6 +89,11 @@ function addPlayerToLobby(lobby: LobbyState, player: Player): void {
   }
 }
 
+// Helper function to validate role configuration
+function validateRoleConfig(lobby: LobbyState): boolean {
+  return lobby.selectedRoles.length === lobby.players.length + 3;
+}
+
 io.on("connection", (socket) => {
   console.log("New socket connection:", socket.id);
 
@@ -113,6 +119,7 @@ io.on("connection", (socket) => {
         players: [],
         availableRoles,
         selectedRoles,
+        isRoleConfigValid: false,
       };
       lobbies.set(instanceId, lobby);
     }
@@ -121,6 +128,8 @@ io.on("connection", (socket) => {
     const player: Player = { userId, username, avatar };
     addPlayerToLobby(lobby, player);
 
+    lobby.isRoleConfigValid = validateRoleConfig(lobby);
+
     // Broadcast lobby state to clients
     io.to(instanceId).emit("lobby_state", {
       instanceId: lobby.instanceId,
@@ -128,6 +137,7 @@ io.on("connection", (socket) => {
       players: lobby.players,
       availableRoles: lobby.availableRoles,
       selectedRoles: [...lobby.selectedRoles],
+      isRoleConfigValid: lobby.isRoleConfigValid,
     });
   });
 
@@ -164,6 +174,8 @@ io.on("connection", (socket) => {
       console.log(`Updated selectedRoles: ${lobby.selectedRoles}`);
     }
 
+    lobby.isRoleConfigValid = validateRoleConfig(lobby);
+
     // Broadcast updated lobby state to all clients
     io.to(instanceId).emit("lobby_state", {
       instanceId: lobby.instanceId,
@@ -171,6 +183,7 @@ io.on("connection", (socket) => {
       players: lobby.players,
       availableRoles: lobby.availableRoles,
       selectedRoles: [...lobby.selectedRoles],
+      isRoleConfigValid: lobby.isRoleConfigValid,
     });
   });
 
@@ -185,12 +198,16 @@ io.on("connection", (socket) => {
       lobby.players = lobby.players.filter(
         (player) => player.userId !== socket.data.userId
       );
+
+      lobby.isRoleConfigValid = validateRoleConfig(lobby);
+
       io.to(socket.data.instanceId).emit("lobby_state", {
         instanceId: lobby.instanceId,
         createdAt: lobby.createdAt.toISOString(),
         players: lobby.players,
         availableRoles: lobby.availableRoles,
         selectedRoles: [...lobby.selectedRoles],
+        isRoleConfigValid: lobby.isRoleConfigValid,
       });
     }
   });

@@ -21,6 +21,7 @@ export interface LobbyState {
   players: Player[];
   availableRoles: Role[];
   selectedRoles: string[];
+  isRoleConfigValid: boolean;
 }
 
 let auth: Auth;

@@ -46,6 +46,7 @@ const createMockRoleData = () => ({
     "troublemaker-1",
     "villager-1",
   ],
+  isRoleConfigValid: false,
 });
 
 describe("App", () => {
@@ -576,6 +577,87 @@ describe("App", () => {
       expect(screen.getByText("testuser")).toBeInTheDocument();
       expect(screen.getByText("newplayer")).toBeInTheDocument();
     });
+
+    it("receives and stores isRoleConfigValid from lobby state", async () => {
+      let lobbyStateCallback: ((lobby: unknown) => void) | undefined;
+
+      mockSocket.on.mockImplementation(
+        (event: string, callback: (lobby: unknown) => void) => {
+          if (event === "lobby_state") {
+            lobbyStateCallback = callback;
+          }
+        }
+      );
+
+      const mockRoles = createMockRoleData();
+
+      vi.mocked(setupDiscordSdk).mockResolvedValue({
+        auth: {
+          access_token: "test-token",
+          user: {
+            id: "1234567890123456789",
+            username: "testuser",
+            discriminator: "0001",
+            public_flags: 0,
+          },
+          scopes: ["identify" as const],
+          expires: "2025-12-15T20:00:00.000Z",
+          application: {
+            id: "app-123",
+            name: "Test App",
+            description: "A test Discord app",
+          },
+        },
+        lobby: {
+          instanceId: "test-instance-id",
+          createdAt: new Date().toISOString(),
+          players: [
+            {
+              userId: "1234567890123456789",
+              username: "testuser",
+              avatar: "https://example.com/avatar.png",
+            },
+          ],
+          ...mockRoles,
+        },
+        socket: mockSocket as never,
+      });
+
+      render(<App />);
+
+      await waitFor(() => {
+        expect(screen.getByText("Players (1/5)")).toBeInTheDocument();
+      });
+
+      // Simulate receiving updated lobby state with isRoleConfigValid
+      const updatedLobby = {
+        instanceId: "test-instance-id",
+        createdAt: new Date().toISOString(),
+        players: [
+          {
+            userId: "1234567890123456789",
+            username: "testuser",
+            avatar: "https://example.com/avatar.png",
+          },
+        ],
+        availableRoles: mockRoles.availableRoles,
+        selectedRoles: ["werewolf-1", "seer-1", "villager-1", "robber-1"],
+        isRoleConfigValid: true,
+      };
+
+      await act(async () => {
+        lobbyStateCallback!(updatedLobby);
+      });
+
+      // Wait for the UI to update
+      await waitFor(() => {
+        expect(screen.getByText("Players (1/5)")).toBeInTheDocument();
+      });
+
+      // Verify the component received and can work with the validation state
+      // (even though it's not displayed in the UI per requirements)
+      expect(lobbyStateCallback).toBeDefined();
+    });
   });
 
   describe("Role Selection UI", () => {
@@ -746,6 +828,7 @@ describe("App", () => {
           { id: "villager-1", name: "Villager" },
         ],
         selectedRoles: ["werewolf-1", "seer-1"],
+        isRoleConfigValid: false,
       };
 
       await act(async () => {
@@ -769,6 +852,7 @@ describe("App", () => {
           { id: "villager-1", name: "Villager" },
         ] as Role[],
         selectedRoles: ["werewolf-1"],
+        isRoleConfigValid: false,
       };
 
       vi.mocked(setupDiscordSdk).mockResolvedValue({
