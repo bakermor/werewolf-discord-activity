@@ -9,6 +9,7 @@ function App() {
   const [error, setError] = useState<string | null>(null);
   const [lobby, setLobby] = useState<LobbyState | null>(null);
   const [socket, setSocket] = useState<Socket | null>(null);
+  const [localSelectedRoles, setLocalSelectedRoles] = useState<string[]>([]);
 
   useEffect(() => {
     const sdkSetup = async () => {
@@ -38,6 +39,12 @@ function App() {
     console.log("Socket:", socket);
   }, []);
 
+  useEffect(() => {
+    if (lobby?.selectedRoles) {
+      setLocalSelectedRoles(lobby.selectedRoles);
+    }
+  }, [lobby?.selectedRoles]);
+
   if (isLoading) {
     return <div className={styles.container}>Loading...</div>;
   }
@@ -48,6 +55,18 @@ function App() {
 
   const playerCount = lobby?.players.length ?? 0;
   const maxPlayers = 5;
+
+  const handleToggleRole = (roleId: string) => {
+    setLocalSelectedRoles((prev) => {
+      if (prev.includes(roleId)) {
+        return prev.filter((id) => id !== roleId);
+      } else {
+        return [...prev, roleId];
+      }
+    });
+
+    socket?.emit("toggle_role", { roleId });
+  };
 
   return (
     <div className={styles.container}>
@@ -80,6 +99,32 @@ function App() {
         ) : (
           <p className={styles.emptyState}>Waiting for players to join...</p>
         )}
+      </div>
+
+      <div className={styles.rolesPanel}>
+        <h2 className={styles.rolesHeader}>Select Roles</h2>
+        <div className={styles.rolesGrid}>
+          {lobby?.availableRoles?.map((role) => (
+            <div
+              key={role.id}
+              className={`${styles.roleCard} ${
+                localSelectedRoles.includes(role.id)
+                  ? styles.roleCardActive
+                  : styles.roleCardInactive
+              }`}
+              data-testid="role-card"
+              onClick={() => handleToggleRole(role.id)}
+            >
+              <div
+                className={styles.rolePlaceholder}
+                data-testid="role-placeholder"
+              >
+                ?
+              </div>
+              <span className={styles.roleName}>{role.name}</span>
+            </div>
+          ))}
+        </div>
       </div>
     </div>
   );
