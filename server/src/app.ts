@@ -127,7 +127,50 @@ io.on("connection", (socket) => {
       createdAt: lobby.createdAt.toISOString(),
       players: lobby.players,
       availableRoles: lobby.availableRoles,
-      selectedRoles: lobby.selectedRoles,
+      selectedRoles: [...lobby.selectedRoles],
+    });
+  });
+
+  socket.on("toggle_role", ({ roleId }: { roleId: string }) => {
+    console.log(
+      `User ${socket.data.userId} toggling role ${roleId} in lobby ${socket.data.instanceId}`
+    );
+
+    const instanceId = socket.data.instanceId;
+    if (!instanceId) {
+      console.log("No instanceId in socket data, ignoring toggle_role");
+      return;
+    }
+
+    const lobby = lobbies.get(instanceId);
+    if (!lobby) {
+      console.log(`Lobby ${instanceId} not found, ignoring toggle_role`);
+      return;
+    }
+
+    const roleExists = lobby.availableRoles.some((role) => role.id === roleId);
+    if (!roleExists) {
+      console.log(
+        `Invalid roleId ${roleId} for lobby ${instanceId}, ignoring toggle_role`
+      );
+      return;
+    }
+
+    const roleIndex = lobby.selectedRoles.indexOf(roleId);
+    if (roleIndex !== -1) {
+      lobby.selectedRoles.splice(roleIndex, 1);
+    } else {
+      lobby.selectedRoles.push(roleId);
+      console.log(`Updated selectedRoles: ${lobby.selectedRoles}`);
+    }
+
+    // Broadcast updated lobby state to all clients
+    io.to(instanceId).emit("lobby_state", {
+      instanceId: lobby.instanceId,
+      createdAt: lobby.createdAt.toISOString(),
+      players: lobby.players,
+      availableRoles: lobby.availableRoles,
+      selectedRoles: [...lobby.selectedRoles],
     });
   });
 
@@ -147,7 +190,7 @@ io.on("connection", (socket) => {
         createdAt: lobby.createdAt.toISOString(),
         players: lobby.players,
         availableRoles: lobby.availableRoles,
-        selectedRoles: lobby.selectedRoles,
+        selectedRoles: [...lobby.selectedRoles],
       });
     }
   });

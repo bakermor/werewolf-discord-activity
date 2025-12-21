@@ -878,5 +878,466 @@ describe("Socket.IO Lobby Management", () => {
       expect(deserialized.availableRoles[0]).toHaveProperty("id");
       expect(deserialized.availableRoles[0]).toHaveProperty("name");
     });
+
+    it("successfully adds a role to selectedRoles", async () => {
+      clientSocket = ioClient(serverUrl, {
+        path: "/api/socket.io",
+        transports: ["polling", "websocket"],
+      });
+
+      await waitForSocketEvent(clientSocket, "connect");
+      clientSocket.emit("join_lobby", {
+        instanceId: "toggle-add-lobby",
+        userId: "user-1",
+        username: "testuser",
+        avatar: "https://example.com/avatar.png",
+      });
+
+      const initialState = await waitForSocketEvent<LobbyState>(
+        clientSocket,
+        "lobby_state"
+      );
+      const initialLength = initialState.selectedRoles.length;
+
+      clientSocket.emit("toggle_role", {
+        instanceId: "toggle-add-lobby",
+        roleId: "villager-2",
+      });
+
+      const updatedState = await waitForSocketEvent<LobbyState>(
+        clientSocket,
+        "lobby_state"
+      );
+
+      expect(updatedState.selectedRoles).toHaveLength(initialLength + 1);
+      expect(updatedState.selectedRoles).toContain("villager-2");
+    });
+
+    it("successfully removes a role from selectedRoles", async () => {
+      clientSocket = ioClient(serverUrl, {
+        path: "/api/socket.io",
+        transports: ["polling", "websocket"],
+      });
+
+      await waitForSocketEvent(clientSocket, "connect");
+      clientSocket.emit("join_lobby", {
+        instanceId: "toggle-remove-lobby",
+        userId: "user-1",
+        username: "testuser",
+        avatar: "https://example.com/avatar.png",
+      });
+
+      const initialState = await waitForSocketEvent<LobbyState>(
+        clientSocket,
+        "lobby_state"
+      );
+      const initialLength = initialState.selectedRoles.length;
+
+      clientSocket.emit("toggle_role", {
+        instanceId: "toggle-remove-lobby",
+        roleId: "werewolf-1",
+      });
+
+      const updatedState = await waitForSocketEvent<LobbyState>(
+        clientSocket,
+        "lobby_state"
+      );
+
+      expect(updatedState.selectedRoles).toHaveLength(initialLength - 1);
+      expect(updatedState.selectedRoles).not.toContain("werewolf-1");
+    });
+
+    it("ignores toggle_role with invalid roleId", async () => {
+      clientSocket = ioClient(serverUrl, {
+        path: "/api/socket.io",
+        transports: ["polling", "websocket"],
+      });
+
+      await waitForSocketEvent(clientSocket, "connect");
+      clientSocket.emit("join_lobby", {
+        instanceId: "toggle-invalid-lobby",
+        userId: "user-1",
+        username: "testuser",
+        avatar: "https://example.com/avatar.png",
+      });
+
+      const initialState = await waitForSocketEvent<LobbyState>(
+        clientSocket,
+        "lobby_state"
+      );
+
+      clientSocket.emit("toggle_role", {
+        instanceId: "toggle-invalid-lobby",
+        roleId: "invalid-role-99",
+      });
+
+      // This should timeout because invalid roleId should be ignored
+      try {
+        await waitForSocketEvent<LobbyState>(clientSocket, "lobby_state", 200);
+        expect.fail("Should not have received lobby_state for invalid roleId");
+      } catch (error) {
+        if (
+          error instanceof Error &&
+          !error.message.includes("Event lobby_state timeout")
+        ) {
+          throw error;
+        }
+      }
+      expect(initialState.selectedRoles).toEqual(initialState.selectedRoles);
+    });
+
+    it("broadcasts updated lobby_state to all clients", async () => {
+      const socket1 = ioClient(serverUrl, {
+        path: "/api/socket.io",
+        transports: ["polling", "websocket"],
+      });
+
+      let socket2: ClientSocket | undefined;
+
+      try {
+        await waitForSocketEvent(socket1, "connect");
+        socket1.emit("join_lobby", {
+          instanceId: "broadcast-state-lobby",
+          userId: "user-1",
+          username: "player1",
+          avatar: "https://example.com/avatar1.png",
+        });
+
+        await waitForSocketEvent<LobbyState>(socket1, "lobby_state");
+
+        socket2 = ioClient(serverUrl, {
+          path: "/api/socket.io",
+          transports: ["polling", "websocket"],
+        });
+
+        await waitForSocketEvent(socket2, "connect");
+        socket2.emit("join_lobby", {
+          instanceId: "broadcast-state-lobby",
+          userId: "user-2",
+          username: "player2",
+          avatar: "https://example.com/avatar2.png",
+        });
+
+        await waitForSocketEvent<LobbyState>(socket2, "lobby_state");
+
+        socket1.emit("toggle_role", {
+          instanceId: "broadcast-state-lobby",
+          roleId: "villager-2",
+        });
+
+        const state1 = await waitForSocketEvent<LobbyState>(
+          socket1,
+          "lobby_state"
+        );
+        const state2 = await waitForSocketEvent<LobbyState>(
+          socket2,
+          "lobby_state"
+        );
+
+        expect(state1.selectedRoles).toContain("villager-2");
+        expect(state2.selectedRoles).toContain("villager-2");
+        expect(state1.selectedRoles).toEqual(state2.selectedRoles);
+      } finally {
+        socket2?.disconnect();
+        socket1.disconnect();
+        await new Promise((resolve) => setTimeout(resolve, 100));
+      }
+    });
+
+    it("handles multiple sequential toggles correctly", async () => {
+      clientSocket = ioClient(serverUrl, {
+        path: "/api/socket.io",
+        transports: ["polling", "websocket"],
+      });
+
+      await waitForSocketEvent(clientSocket, "connect");
+      clientSocket.emit("join_lobby", {
+        instanceId: "sequential-toggle-lobby",
+        userId: "user-1",
+        username: "testuser",
+        avatar: "https://example.com/avatar.png",
+      });
+
+      const initialState = await waitForSocketEvent<LobbyState>(
+        clientSocket,
+        "lobby_state"
+      );
+
+      // Add villager-2
+      clientSocket.emit("toggle_role", {
+        instanceId: "sequential-toggle-lobby",
+        roleId: "villager-2",
+      });
+      const state1 = await waitForSocketEvent<LobbyState>(
+        clientSocket,
+        "lobby_state"
+      );
+      expect(state1.selectedRoles).toContain("villager-2");
+
+      // Remove werewolf-1
+      clientSocket.emit("toggle_role", {
+        instanceId: "sequential-toggle-lobby",
+        roleId: "werewolf-1",
+      });
+      const state2 = await waitForSocketEvent<LobbyState>(
+        clientSocket,
+        "lobby_state"
+      );
+      expect(state2.selectedRoles).not.toContain("werewolf-1");
+      expect(state2.selectedRoles).toContain("villager-2");
+
+      // Add werewolf-1 back
+      clientSocket.emit("toggle_role", {
+        instanceId: "sequential-toggle-lobby",
+        roleId: "werewolf-1",
+      });
+      const state3 = await waitForSocketEvent<LobbyState>(
+        clientSocket,
+        "lobby_state"
+      );
+      expect(state3.selectedRoles).toContain("werewolf-1");
+      expect(state3.selectedRoles).toContain("villager-2");
+
+      expect(state3.selectedRoles).toHaveLength(
+        initialState.selectedRoles.length + 1
+      );
+    });
+
+    it("handles simultaneous toggles from multiple clients", async () => {
+      const socket1 = ioClient(serverUrl, {
+        path: "/api/socket.io",
+        transports: ["polling", "websocket"],
+      });
+
+      let socket2: ClientSocket | undefined;
+
+      try {
+        await waitForSocketEvent(socket1, "connect");
+        socket1.emit("join_lobby", {
+          instanceId: "simultaneous-toggle-lobby",
+          userId: "user-1",
+          username: "player1",
+          avatar: "https://example.com/avatar1.png",
+        });
+
+        await waitForSocketEvent<LobbyState>(socket1, "lobby_state");
+
+        socket2 = ioClient(serverUrl, {
+          path: "/api/socket.io",
+          transports: ["polling", "websocket"],
+        });
+
+        await waitForSocketEvent(socket2, "connect");
+        socket2.emit("join_lobby", {
+          instanceId: "simultaneous-toggle-lobby",
+          userId: "user-2",
+          username: "player2",
+          avatar: "https://example.com/avatar2.png",
+        });
+
+        await waitForSocketEvent<LobbyState>(socket2, "lobby_state");
+
+        const updates: LobbyState[] = [];
+        const collectEvents = new Promise<LobbyState[]>((resolve) => {
+          const handler = (data: LobbyState) => {
+            updates.push(data);
+            if (updates.length === 2) {
+              socket1.off("lobby_state", handler);
+              resolve(updates);
+            }
+          };
+          socket1.on("lobby_state", handler);
+        });
+
+        socket1.emit("toggle_role", {
+          instanceId: "simultaneous-toggle-lobby",
+          roleId: "villager-2",
+        });
+        socket2.emit("toggle_role", {
+          instanceId: "simultaneous-toggle-lobby",
+          roleId: "villager-3",
+        });
+
+        const results = await collectEvents;
+
+        const finalState = results[1];
+        expect(finalState.selectedRoles).toContain("villager-2");
+        expect(finalState.selectedRoles).toContain("villager-3");
+      } finally {
+        socket2?.disconnect();
+        socket1.disconnect();
+        await new Promise((resolve) => setTimeout(resolve, 100));
+      }
+    });
+
+    it("handles rapid successive toggles", async () => {
+      clientSocket = ioClient(serverUrl, {
+        path: "/api/socket.io",
+        transports: ["polling", "websocket"],
+      });
+
+      await waitForSocketEvent(clientSocket, "connect");
+      clientSocket.emit("join_lobby", {
+        instanceId: "rapid-toggle-lobby",
+        userId: "user-1",
+        username: "testuser",
+        avatar: "https://example.com/avatar.png",
+      });
+
+      await waitForSocketEvent<LobbyState>(clientSocket, "lobby_state");
+
+      const rolesToToggle = [
+        "villager-2",
+        "villager-3",
+        "troublemaker-1",
+        "seer-1",
+        "robber-1",
+      ];
+
+      const updates: LobbyState[] = [];
+      const collectEvents = new Promise<LobbyState[]>((resolve) => {
+        const handler = (data: LobbyState) => {
+          updates.push(data);
+          if (updates.length === 5) {
+            clientSocket.off("lobby_state", handler);
+            resolve(updates);
+          }
+        };
+        clientSocket.on("lobby_state", handler);
+      });
+
+      for (const roleId of rolesToToggle) {
+        clientSocket.emit("toggle_role", {
+          instanceId: "rapid-toggle-lobby",
+          roleId,
+        });
+      }
+
+      const results = await collectEvents;
+
+      const finalState = results[4];
+
+      expect(finalState.selectedRoles).toContain("villager-2");
+      expect(finalState.selectedRoles).toContain("villager-3");
+
+      expect(finalState.selectedRoles).not.toContain("troublemaker-1");
+      expect(finalState.selectedRoles).not.toContain("seer-1");
+      expect(finalState.selectedRoles).not.toContain("robber-1");
+
+      expect(finalState.selectedRoles).toContain("werewolf-1");
+      expect(finalState.selectedRoles).toContain("werewolf-2");
+      expect(finalState.selectedRoles).toContain("villager-1");
+    });
+
+    it("correctly toggles same role multiple times", async () => {
+      clientSocket = ioClient(serverUrl, {
+        path: "/api/socket.io",
+        transports: ["polling", "websocket"],
+      });
+
+      await waitForSocketEvent(clientSocket, "connect");
+      clientSocket.emit("join_lobby", {
+        instanceId: "toggle-multiple-times",
+        userId: "user-1",
+        username: "testuser",
+        avatar: "https://example.com/avatar.png",
+      });
+
+      const initialState = await waitForSocketEvent<LobbyState>(
+        clientSocket,
+        "lobby_state"
+      );
+      const roleToToggle = "villager-2";
+      const isInitiallySelected =
+        initialState.selectedRoles.includes(roleToToggle);
+
+      // Toggle on/off/on/off
+      const toggleSequence = [true, true, true, true];
+      let lastState: LobbyState | undefined;
+
+      for (let i = 0; i < toggleSequence.length; i++) {
+        clientSocket.emit("toggle_role", {
+          instanceId: "toggle-multiple-times",
+          roleId: roleToToggle,
+        });
+
+        const state = await waitForSocketEvent<LobbyState>(
+          clientSocket,
+          "lobby_state"
+        );
+        lastState = state;
+
+        const isSelected = state.selectedRoles.includes(roleToToggle);
+        const expectedSelected = isInitiallySelected
+          ? (i + 1) % 2 === 0
+          : (i + 1) % 2 === 1;
+        expect(isSelected).toBe(expectedSelected);
+      }
+
+      // Verify no duplicates in selectedRoles using the last state from the loop
+      expect(lastState).toBeDefined();
+      const roleCount = lastState!.selectedRoles.filter(
+        (id) => id === roleToToggle
+      ).length;
+      expect(roleCount).toBeLessThanOrEqual(1);
+    });
+
+    it("maintains consistent payload format on role toggle", async () => {
+      clientSocket = ioClient(serverUrl, {
+        path: "/api/socket.io",
+        transports: ["polling", "websocket"],
+      });
+
+      await waitForSocketEvent(clientSocket, "connect");
+      clientSocket.emit("join_lobby", {
+        instanceId: "format-consistency-lobby",
+        userId: "user-1",
+        username: "testuser",
+        avatar: "https://example.com/avatar.png",
+      });
+
+      const initialState = await waitForSocketEvent<LobbyState>(
+        clientSocket,
+        "lobby_state"
+      );
+
+      // Emit toggle
+      clientSocket.emit("toggle_role", {
+        instanceId: "format-consistency-lobby",
+        roleId: "villager-2",
+      });
+
+      const updatedState = await waitForSocketEvent<LobbyState>(
+        clientSocket,
+        "lobby_state"
+      );
+
+      // Verify all required fields are present
+      expect(updatedState).toHaveProperty("instanceId");
+      expect(updatedState).toHaveProperty("createdAt");
+      expect(updatedState).toHaveProperty("players");
+      expect(updatedState).toHaveProperty("availableRoles");
+      expect(updatedState).toHaveProperty("selectedRoles");
+
+      // Verify field types
+      expect(typeof updatedState.instanceId).toBe("string");
+      expect(typeof updatedState.createdAt).toBe("string");
+      expect(Array.isArray(updatedState.players)).toBe(true);
+      expect(Array.isArray(updatedState.availableRoles)).toBe(true);
+      expect(Array.isArray(updatedState.selectedRoles)).toBe(true);
+
+      // Verify createdAt is ISO string format
+      expect(() => new Date(updatedState.createdAt)).not.toThrow();
+
+      // Verify selectedRoles contains only strings
+      updatedState.selectedRoles.forEach((roleId) => {
+        expect(typeof roleId).toBe("string");
+      });
+
+      // Verify format matches initial state structure
+      expect(Object.keys(updatedState).sort()).toEqual(
+        Object.keys(initialState).sort()
+      );
+    });
   });
 });
