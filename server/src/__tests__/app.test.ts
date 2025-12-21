@@ -1339,5 +1339,269 @@ describe("Socket.IO Lobby Management", () => {
         Object.keys(initialState).sort()
       );
     });
+
+    it("includes isRoleConfigValid in initial lobby state", async () => {
+      clientSocket = ioClient(serverUrl, {
+        path: "/api/socket.io",
+        transports: ["polling", "websocket"],
+      });
+
+      await waitForSocketEvent(clientSocket, "connect");
+      clientSocket.emit("join_lobby", validPlayerData);
+
+      const state = await waitForSocketEvent<LobbyState>(
+        clientSocket,
+        "lobby_state"
+      );
+
+      expect(state).toHaveProperty("isRoleConfigValid");
+      expect(typeof state.isRoleConfigValid).toBe("boolean");
+      expect(state.isRoleConfigValid).toBe(false);
+    });
+
+    it("updates validation correctly when toggling to valid count", async () => {
+      clientSocket = ioClient(serverUrl, {
+        path: "/api/socket.io",
+        transports: ["polling", "websocket"],
+      });
+
+      await waitForSocketEvent(clientSocket, "connect");
+      clientSocket.emit("join_lobby", {
+        instanceId: "validation-toggle-lobby",
+        userId: "user-1",
+        username: "testuser",
+        avatar: "https://example.com/avatar.png",
+      });
+
+      const initialState = await waitForSocketEvent<LobbyState>(
+        clientSocket,
+        "lobby_state"
+      );
+      expect(initialState.isRoleConfigValid).toBe(false);
+
+      // Remove 2 roles to get to 4 (valid for 1 player)
+      clientSocket.emit("toggle_role", {
+        instanceId: "validation-toggle-lobby",
+        roleId: "troublemaker-1",
+      });
+      const state1 = await waitForSocketEvent<LobbyState>(
+        clientSocket,
+        "lobby_state"
+      );
+      expect(state1.selectedRoles).toHaveLength(5);
+      expect(state1.isRoleConfigValid).toBe(false);
+
+      clientSocket.emit("toggle_role", {
+        instanceId: "validation-toggle-lobby",
+        roleId: "robber-1",
+      });
+      const state2 = await waitForSocketEvent<LobbyState>(
+        clientSocket,
+        "lobby_state"
+      );
+      expect(state2.selectedRoles).toHaveLength(4);
+      expect(state2.isRoleConfigValid).toBe(true);
+    });
+
+    it("updates validation when players join", async () => {
+      const socket1 = ioClient(serverUrl, {
+        path: "/api/socket.io",
+        transports: ["polling", "websocket"],
+      });
+
+      let socket2: ClientSocket | undefined;
+
+      try {
+        await waitForSocketEvent(socket1, "connect");
+        socket1.emit("join_lobby", {
+          instanceId: "validation-join-lobby",
+          userId: "user-1",
+          username: "player1",
+          avatar: "https://example.com/avatar1.png",
+        });
+
+        const state1 = await waitForSocketEvent<LobbyState>(
+          socket1,
+          "lobby_state"
+        );
+        expect(state1.players).toHaveLength(1);
+        expect(state1.selectedRoles).toHaveLength(6);
+        expect(state1.isRoleConfigValid).toBe(false);
+
+        // Adjust to valid config for 1 player (4 roles)
+        socket1.emit("toggle_role", {
+          instanceId: "validation-join-lobby",
+          roleId: "troublemaker-1",
+        });
+        await waitForSocketEvent<LobbyState>(socket1, "lobby_state");
+
+        socket1.emit("toggle_role", {
+          instanceId: "validation-join-lobby",
+          roleId: "robber-1",
+        });
+        const validState = await waitForSocketEvent<LobbyState>(
+          socket1,
+          "lobby_state"
+        );
+        expect(validState.selectedRoles).toHaveLength(4);
+        expect(validState.isRoleConfigValid).toBe(true);
+
+        // Now add second player
+        socket2 = ioClient(serverUrl, {
+          path: "/api/socket.io",
+          transports: ["polling", "websocket"],
+        });
+
+        await waitForSocketEvent(socket2, "connect");
+        socket2.emit("join_lobby", {
+          instanceId: "validation-join-lobby",
+          userId: "user-2",
+          username: "player2",
+          avatar: "https://example.com/avatar2.png",
+        });
+
+        const state2 = await waitForSocketEvent<LobbyState>(
+          socket1,
+          "lobby_state"
+        );
+        // 2 players, 4 roles: invalid (needs 5)
+        expect(state2.players).toHaveLength(2);
+        expect(state2.selectedRoles).toHaveLength(4);
+        expect(state2.isRoleConfigValid).toBe(false);
+      } finally {
+        socket2?.disconnect();
+        socket1.disconnect();
+        await new Promise((resolve) => setTimeout(resolve, 100));
+      }
+    });
+
+    it("updates validation when players leave", async () => {
+      const socket1 = ioClient(serverUrl, {
+        path: "/api/socket.io",
+        transports: ["polling", "websocket"],
+      });
+
+      const socket2 = ioClient(serverUrl, {
+        path: "/api/socket.io",
+        transports: ["polling", "websocket"],
+      });
+
+      try {
+        await Promise.all([
+          waitForSocketEvent(socket1, "connect"),
+          waitForSocketEvent(socket2, "connect"),
+        ]);
+
+        socket1.emit("join_lobby", {
+          instanceId: "validation-leave-lobby",
+          userId: "user-1",
+          username: "player1",
+          avatar: "https://example.com/avatar1.png",
+        });
+
+        await waitForSocketEvent<LobbyState>(socket1, "lobby_state");
+
+        socket2.emit("join_lobby", {
+          instanceId: "validation-leave-lobby",
+          userId: "user-2",
+          username: "player2",
+          avatar: "https://example.com/avatar2.png",
+        });
+
+        const state2Players = await waitForSocketEvent<LobbyState>(
+          socket1,
+          "lobby_state"
+        );
+        expect(state2Players.players).toHaveLength(2);
+        expect(state2Players.selectedRoles).toHaveLength(6);
+        expect(state2Players.isRoleConfigValid).toBe(false);
+
+        // Adjust to valid config for 2 players (5 roles)
+        socket1.emit("toggle_role", {
+          instanceId: "validation-leave-lobby",
+          roleId: "villager-1",
+        });
+        const validState = await waitForSocketEvent<LobbyState>(
+          socket1,
+          "lobby_state"
+        );
+        expect(validState.selectedRoles).toHaveLength(5);
+        expect(validState.isRoleConfigValid).toBe(true);
+
+        // Player 2 disconnects
+        socket2.disconnect();
+
+        const state1Player = await waitForSocketEvent<LobbyState>(
+          socket1,
+          "lobby_state"
+        );
+        // 1 player, 5 roles: invalid (needs 4)
+        expect(state1Player.players).toHaveLength(1);
+        expect(state1Player.selectedRoles).toHaveLength(5);
+        expect(state1Player.isRoleConfigValid).toBe(false);
+      } finally {
+        socket1.disconnect();
+        await new Promise((resolve) => setTimeout(resolve, 100));
+      }
+    });
+
+    it("broadcasts isRoleConfigValid to all clients", async () => {
+      const socket1 = ioClient(serverUrl, {
+        path: "/api/socket.io",
+        transports: ["polling", "websocket"],
+      });
+
+      let socket2: ClientSocket | undefined;
+
+      try {
+        await waitForSocketEvent(socket1, "connect");
+        socket1.emit("join_lobby", {
+          instanceId: "validation-broadcast-lobby",
+          userId: "user-1",
+          username: "player1",
+          avatar: "https://example.com/avatar1.png",
+        });
+
+        await waitForSocketEvent<LobbyState>(socket1, "lobby_state");
+
+        socket2 = ioClient(serverUrl, {
+          path: "/api/socket.io",
+          transports: ["polling", "websocket"],
+        });
+
+        await waitForSocketEvent(socket2, "connect");
+        socket2.emit("join_lobby", {
+          instanceId: "validation-broadcast-lobby",
+          userId: "user-2",
+          username: "player2",
+          avatar: "https://example.com/avatar2.png",
+        });
+
+        await waitForSocketEvent<LobbyState>(socket2, "lobby_state");
+
+        // Toggle role from socket1
+        socket1.emit("toggle_role", {
+          instanceId: "validation-broadcast-lobby",
+          roleId: "villager-1",
+        });
+
+        const [state1, state2] = await Promise.all([
+          waitForSocketEvent<LobbyState>(socket1, "lobby_state"),
+          waitForSocketEvent<LobbyState>(socket2, "lobby_state"),
+        ]);
+
+        // Both clients should receive the same validation state
+        expect(state1.isRoleConfigValid).toBe(state2.isRoleConfigValid);
+        expect(state1.selectedRoles).toEqual(state2.selectedRoles);
+        expect(state1.players).toHaveLength(2);
+        expect(state1.selectedRoles).toHaveLength(5);
+        // 2 players + 3 = 5 roles, so valid
+        expect(state1.isRoleConfigValid).toBe(true);
+      } finally {
+        socket2?.disconnect();
+        socket1.disconnect();
+        await new Promise((resolve) => setTimeout(resolve, 100));
+      }
+    });
   });
 });
