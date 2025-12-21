@@ -1,5 +1,5 @@
 import "@testing-library/jest-dom/vitest";
-import { render, screen, waitFor } from "@testing-library/react";
+import { act, render, screen, waitFor } from "@testing-library/react";
 import React from "react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import App from "../App";
@@ -390,7 +390,9 @@ describe("App", () => {
     };
 
     // Trigger the lobby_state callback
-    lobbyStateCallback!(updatedLobby);
+    await act(async () => {
+      lobbyStateCallback!(updatedLobby);
+    });
 
     // Wait for the UI to update
     await waitFor(() => {
@@ -488,7 +490,7 @@ describe("App", () => {
       });
 
       const mockSetupCall = vi.mocked(setupDiscordSdk).mock.results[0].value;
-      expect(mockSetupCall).resolves.toBeDefined();
+      await expect(mockSetupCall).resolves.toBeDefined();
     });
 
     it("preserves role configuration when lobby state updates ", async () => {
@@ -562,7 +564,9 @@ describe("App", () => {
       };
 
       // Trigger the lobby_state callback
-      lobbyStateCallback!(updatedLobby);
+      await act(async () => {
+        lobbyStateCallback!(updatedLobby);
+      });
 
       // Wait for the UI to update
       await waitFor(() => {
@@ -744,7 +748,9 @@ describe("App", () => {
         selectedRoles: ["werewolf-1", "seer-1"],
       };
 
-      lobbyStateCallback!(updatedLobby);
+      await act(async () => {
+        lobbyStateCallback!(updatedLobby);
+      });
 
       await waitFor(() => {
         expect(screen.getAllByTestId("role-placeholder")).toHaveLength(3);
@@ -792,6 +798,183 @@ describe("App", () => {
       expect(screen.getAllByTestId("role-placeholder")).toHaveLength(3);
       expect(screen.getByText("Werewolf")).toBeInTheDocument();
       expect(screen.getByText("Villager")).toBeInTheDocument();
+    });
+
+    it("toggles role card state when clicked", async () => {
+      const initialRoles = createMockRoleData();
+      vi.mocked(setupDiscordSdk).mockResolvedValue({
+        auth: createMockAuth(),
+        lobby: {
+          instanceId: "test-instance-id",
+          createdAt: new Date().toISOString(),
+          players: [
+            {
+              userId: "1234567890123456789",
+              username: "testuser",
+              avatar: "https://example.com/avatar.png",
+            },
+          ],
+          ...initialRoles,
+        },
+        socket: mockSocket as never,
+      });
+
+      render(<App />);
+
+      await waitFor(() => {
+        expect(screen.getByText("Select Roles")).toBeInTheDocument();
+      });
+
+      const roleCards = screen.getAllByTestId("role-card");
+      expect(roleCards.length).toBeGreaterThan(6);
+
+      const inactiveCard = roleCards[6] as HTMLElement;
+
+      expect(inactiveCard.className).toContain("roleCardInactive");
+
+      // Click to toggle to active
+      await act(async () => {
+        inactiveCard.click();
+      });
+
+      await waitFor(() => {
+        expect(inactiveCard.className).toContain("roleCardActive");
+      });
+    });
+
+    it("toggles role card to inactive when clicked again", async () => {
+      const initialRoles = createMockRoleData();
+      vi.mocked(setupDiscordSdk).mockResolvedValue({
+        auth: createMockAuth(),
+        lobby: {
+          instanceId: "test-instance-id",
+          createdAt: new Date().toISOString(),
+          players: [
+            {
+              userId: "1234567890123456789",
+              username: "testuser",
+              avatar: "https://example.com/avatar.png",
+            },
+          ],
+          ...initialRoles,
+        },
+        socket: mockSocket as never,
+      });
+
+      render(<App />);
+
+      await waitFor(() => {
+        expect(screen.getByText("Select Roles")).toBeInTheDocument();
+      });
+
+      const roleCards = screen.getAllByTestId("role-card");
+      expect(roleCards.length).toBeGreaterThan(6);
+
+      const inactiveCard = roleCards[6] as HTMLElement;
+
+      expect(inactiveCard.className).toContain("roleCardInactive");
+
+      // First click
+      await act(async () => {
+        inactiveCard.click();
+      });
+
+      await waitFor(() => {
+        expect(inactiveCard.className).toContain("roleCardActive");
+      });
+
+      // Second click
+      await act(async () => {
+        inactiveCard.click();
+      });
+
+      await waitFor(() => {
+        expect(inactiveCard.className).toContain("roleCardInactive");
+      });
+    });
+
+    it("emits toggle_role event when role card is clicked", async () => {
+      const initialRoles = createMockRoleData();
+      vi.mocked(setupDiscordSdk).mockResolvedValue({
+        auth: createMockAuth(),
+        lobby: {
+          instanceId: "test-instance-id",
+          createdAt: new Date().toISOString(),
+          players: [
+            {
+              userId: "1234567890123456789",
+              username: "testuser",
+              avatar: "https://example.com/avatar.png",
+            },
+          ],
+          ...initialRoles,
+        },
+        socket: mockSocket as never,
+      });
+
+      render(<App />);
+
+      await waitFor(() => {
+        expect(screen.getByText("Select Roles")).toBeInTheDocument();
+      });
+
+      const roleCards = screen.getAllByTestId("role-card");
+      const firstCard = roleCards[0] as HTMLElement;
+
+      await act(async () => {
+        firstCard.click();
+      });
+
+      // Verify socket emit was called with correct data
+      expect(mockSocket.emit).toHaveBeenCalledWith("toggle_role", {
+        roleId: "werewolf-1",
+      });
+    });
+
+    it("handles multiple rapid role toggles correctly", async () => {
+      const initialRoles = createMockRoleData();
+      vi.mocked(setupDiscordSdk).mockResolvedValue({
+        auth: createMockAuth(),
+        lobby: {
+          instanceId: "test-instance-id",
+          createdAt: new Date().toISOString(),
+          players: [
+            {
+              userId: "1234567890123456789",
+              username: "testuser",
+              avatar: "https://example.com/avatar.png",
+            },
+          ],
+          ...initialRoles,
+        },
+        socket: mockSocket as never,
+      });
+
+      render(<App />);
+
+      await waitFor(() => {
+        expect(screen.getByText("Select Roles")).toBeInTheDocument();
+      });
+
+      const roleCards = screen.getAllByTestId("role-card");
+      const firstCard = roleCards[0] as HTMLElement;
+
+      expect(firstCard.className).toContain("roleCardActive");
+
+      // Perform rapid clicks
+      await act(async () => {
+        firstCard.click();
+        firstCard.click();
+        firstCard.click();
+      });
+
+      // Should be in inactive state after 3 clicks (active -> inactive -> active -> inactive)
+      await waitFor(() => {
+        expect(firstCard.className).toContain("roleCardInactive");
+      });
+
+      // Verify all emit calls were made
+      expect(mockSocket.emit).toHaveBeenCalledTimes(3);
     });
   });
 });
