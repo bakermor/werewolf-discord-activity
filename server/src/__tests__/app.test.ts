@@ -191,6 +191,7 @@ describe("Socket.IO Lobby Management", () => {
       userId: validPlayerData.userId,
       username: validPlayerData.username,
       avatar: validPlayerData.avatar,
+      isReady: false,
     });
     expect(state.availableRoles).toHaveLength(8);
     expect(state.selectedRoles).toHaveLength(6);
@@ -247,11 +248,13 @@ describe("Socket.IO Lobby Management", () => {
       userId: player1Data.userId,
       username: player1Data.username,
       avatar: player1Data.avatar,
+      isReady: false,
     });
     expect(state2.players).toContainEqual({
       userId: player2Data.userId,
       username: player2Data.username,
       avatar: player2Data.avatar,
+      isReady: false,
     });
 
     // Clean up
@@ -455,11 +458,13 @@ describe("Socket.IO Lobby Management", () => {
       userId: "user-1",
       username: "player1",
       avatar: "https://example.com/avatar1.png",
+      isReady: false,
     });
     expect(state2.players).toContainEqual({
       userId: "user-2",
       username: "player2",
       avatar: "https://example.com/avatar2.png",
+      isReady: false,
     });
 
     // Disconnect player 2
@@ -472,6 +477,7 @@ describe("Socket.IO Lobby Management", () => {
       userId: "user-1",
       username: "player1",
       avatar: "https://example.com/avatar1.png",
+      isReady: false,
     });
 
     // Clean up
@@ -517,6 +523,7 @@ describe("Socket.IO Lobby Management", () => {
       userId: validPlayerData.userId,
       username: validPlayerData.username,
       avatar: validPlayerData.avatar,
+      isReady: false,
     });
   });
 

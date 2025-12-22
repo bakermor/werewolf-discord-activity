@@ -32,6 +32,7 @@ interface Player {
   userId: string;
   username: string;
   avatar: string;
+  isReady: boolean;
 }
 
 // Role interface
@@ -94,6 +95,12 @@ function validateRoleConfig(lobby: LobbyState): boolean {
   return lobby.selectedRoles.length === lobby.players.length + 3;
 }
 
+function resetPlayersReadiness(lobby: LobbyState): void {
+  lobby.players.forEach((player) => {
+    player.isReady = false;
+  });
+}
+
 io.on("connection", (socket) => {
   console.log("New socket connection:", socket.id);
 
@@ -125,10 +132,11 @@ io.on("connection", (socket) => {
     }
 
     // Add player to lobby (deduped by userId)
-    const player: Player = { userId, username, avatar };
+    const player: Player = { userId, username, avatar, isReady: false };
     addPlayerToLobby(lobby, player);
 
     lobby.isRoleConfigValid = validateRoleConfig(lobby);
+    resetPlayersReadiness(lobby);
 
     // Broadcast lobby state to clients
     io.to(instanceId).emit("lobby_state", {
@@ -176,6 +184,9 @@ io.on("connection", (socket) => {
 
     lobby.isRoleConfigValid = validateRoleConfig(lobby);
 
+    // Reset all players' readiness when roles change
+    resetPlayersReadiness(lobby);
+
     // Broadcast updated lobby state to all clients
     io.to(instanceId).emit("lobby_state", {
       instanceId: lobby.instanceId,
@@ -200,6 +211,7 @@ io.on("connection", (socket) => {
       );
 
       lobby.isRoleConfigValid = validateRoleConfig(lobby);
+      resetPlayersReadiness(lobby);
 
       io.to(socket.data.instanceId).emit("lobby_state", {
         instanceId: lobby.instanceId,

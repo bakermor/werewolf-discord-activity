@@ -8,6 +8,7 @@ export interface Player {
   userId: string;
   username: string;
   avatar: string;
+  isReady: boolean;
 }
 
 export interface Role {
