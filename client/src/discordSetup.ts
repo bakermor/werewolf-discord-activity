@@ -23,6 +23,7 @@ export interface LobbyState {
   availableRoles: Role[];
   selectedRoles: string[];
   isRoleConfigValid: boolean;
+  gamePhase: string;
 }
 
 let auth: Auth;

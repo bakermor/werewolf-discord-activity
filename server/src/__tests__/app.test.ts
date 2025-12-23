@@ -186,6 +186,7 @@ describe("Socket.IO Lobby Management", () => {
     expect(state).toHaveProperty("players");
     expect(state).toHaveProperty("availableRoles");
     expect(state).toHaveProperty("selectedRoles");
+    expect(state).toHaveProperty("gamePhase", "lobby");
     expect(state.players).toHaveLength(1);
     expect(state.players[0]).toEqual({
       userId: validPlayerData.userId,
@@ -1313,6 +1314,7 @@ describe("Socket.IO Lobby Management", () => {
       expect(updatedState).toHaveProperty("players");
       expect(updatedState).toHaveProperty("availableRoles");
       expect(updatedState).toHaveProperty("selectedRoles");
+      expect(updatedState).toHaveProperty("gamePhase");
 
       // Verify field types
       expect(typeof updatedState.instanceId).toBe("string");
@@ -1320,6 +1322,7 @@ describe("Socket.IO Lobby Management", () => {
       expect(Array.isArray(updatedState.players)).toBe(true);
       expect(Array.isArray(updatedState.availableRoles)).toBe(true);
       expect(Array.isArray(updatedState.selectedRoles)).toBe(true);
+      expect(typeof updatedState.gamePhase).toBe("string");
 
       // Verify createdAt is ISO string format
       expect(() => new Date(updatedState.createdAt)).not.toThrow();
@@ -1352,6 +1355,7 @@ describe("Socket.IO Lobby Management", () => {
       expect(state).toHaveProperty("isRoleConfigValid");
       expect(typeof state.isRoleConfigValid).toBe("boolean");
       expect(state.isRoleConfigValid).toBe(false);
+      expect(state).toHaveProperty("gamePhase", "lobby");
     });
 
     it("updates validation correctly when toggling to valid count", async () => {
@@ -1592,347 +1596,671 @@ describe("Socket.IO Lobby Management", () => {
         await new Promise((resolve) => setTimeout(resolve, 100));
       }
     });
-  });
 
-  it("allows player to ready up when role config is valid", async () => {
-    const socket1 = ioClient(serverUrl, {
-      path: "/api/socket.io",
-      transports: ["polling", "websocket"],
-    });
-
-    let socket2: ClientSocket | undefined;
-    let socket3: ClientSocket | undefined;
-
-    try {
-      await waitForSocketEvent(socket1, "connect");
-      socket1.emit("join_lobby", {
-        instanceId: "ready-up-valid-lobby",
-        userId: "user-1",
-        username: "testuser",
-        avatar: "https://example.com/avatar.png",
-      });
-
-      const initialState = await waitForSocketEvent<LobbyState>(
-        socket1,
-        "lobby_state"
-      );
-      expect(initialState.isRoleConfigValid).toBe(false);
-      expect(initialState.players[0].isReady).toBe(false);
-
-      socket2 = ioClient(serverUrl, {
+    it("starts game when all players are ready", async () => {
+      const socket1 = ioClient(serverUrl, {
         path: "/api/socket.io",
         transports: ["polling", "websocket"],
       });
 
-      await waitForSocketEvent(socket2, "connect");
-      socket2.emit("join_lobby", {
-        instanceId: "ready-up-valid-lobby",
-        userId: "user-2",
-        username: "player2",
-        avatar: "https://example.com/avatar2.png",
-      });
+      let socket2: ClientSocket | undefined;
+      let socket3: ClientSocket | undefined;
 
-      await waitForSocketEvent<LobbyState>(socket2, "lobby_state");
-
-      socket3 = ioClient(serverUrl, {
-        path: "/api/socket.io",
-        transports: ["polling", "websocket"],
-      });
-
-      await waitForSocketEvent(socket3, "connect");
-      socket3.emit("join_lobby", {
-        instanceId: "ready-up-valid-lobby",
-        userId: "user-3",
-        username: "player3",
-        avatar: "https://example.com/avatar3.png",
-      });
-
-      await waitForSocketEvent<LobbyState>(socket3, "lobby_state");
-
-      // Now ready up
-      socket1.emit("player_ready");
-      const stateAfterPlayer1Ready = await waitForSocketEvent<LobbyState>(
-        socket1,
-        "lobby_state"
-      );
-      expect(stateAfterPlayer1Ready.players[0].isReady).toBe(true);
-      expect(stateAfterPlayer1Ready.players[1].isReady).toBe(false);
-      expect(stateAfterPlayer1Ready.players[2].isReady).toBe(false);
-
-      // Player 2 ready up
-      socket2?.emit("player_ready");
-      const stateAfterPlayer2Ready = await waitForSocketEvent<LobbyState>(
-        socket1,
-        "lobby_state"
-      );
-      expect(stateAfterPlayer2Ready.players[0].isReady).toBe(true);
-      expect(stateAfterPlayer2Ready.players[1].isReady).toBe(true);
-      expect(stateAfterPlayer2Ready.players[2].isReady).toBe(false);
-    } finally {
-      socket1.disconnect();
-      socket2?.disconnect();
-      socket3?.disconnect();
-      await new Promise((resolve) => setTimeout(resolve, 100));
-    }
-  });
-
-  it("prevents ready-up when role config is invalid", async () => {
-    const socket1 = ioClient(serverUrl, {
-      path: "/api/socket.io",
-      transports: ["polling", "websocket"],
-    });
-
-    let socket2: ClientSocket | undefined;
-    let socket3: ClientSocket | undefined;
-
-    try {
-      await waitForSocketEvent(socket1, "connect");
-      socket1.emit("join_lobby", {
-        instanceId: "ready-up-invalid-lobby",
-        userId: "user-1",
-        username: "testuser",
-        avatar: "https://example.com/avatar.png",
-      });
-
-      const initialState = await waitForSocketEvent<LobbyState>(
-        socket1,
-        "lobby_state"
-      );
-      expect(initialState.isRoleConfigValid).toBe(false);
-      expect(initialState.players[0].isReady).toBe(false);
-
-      socket2 = ioClient(serverUrl, {
-        path: "/api/socket.io",
-        transports: ["polling", "websocket"],
-      });
-
-      await waitForSocketEvent(socket2, "connect");
-      socket2.emit("join_lobby", {
-        instanceId: "ready-up-invalid-lobby",
-        userId: "user-2",
-        username: "player2",
-        avatar: "https://example.com/avatar2.png",
-      });
-
-      await waitForSocketEvent<LobbyState>(socket2, "lobby_state");
-
-      socket3 = ioClient(serverUrl, {
-        path: "/api/socket.io",
-        transports: ["polling", "websocket"],
-      });
-
-      await waitForSocketEvent(socket3, "connect");
-      socket3.emit("join_lobby", {
-        instanceId: "ready-up-invalid-lobby",
-        userId: "user-3",
-        username: "player3",
-        avatar: "https://example.com/avatar3.png",
-      });
-
-      await waitForSocketEvent<LobbyState>(socket3, "lobby_state");
-
-      socket1.emit("toggle_role", {
-        roleId: "villager-1",
-      });
-      await waitForSocketEvent<LobbyState>(socket1, "lobby_state");
-
-      // Try to ready up with invalid config
-      socket1.emit("player_ready");
-
-      // Should timeout because invalid config prevents state change
       try {
-        await waitForSocketEvent<LobbyState>(socket1, "lobby_state", 200);
-        expect.fail("Should not have received lobby_state with invalid config");
-      } catch (error) {
-        if (
-          error instanceof Error &&
-          !error.message.includes("Event lobby_state timeout")
-        ) {
-          throw error;
-        }
+        await waitForSocketEvent(socket1, "connect");
+        socket1.emit("join_lobby", {
+          instanceId: "game-start-lobby",
+          userId: "user-1",
+          username: "player1",
+          avatar: "https://example.com/avatar1.png",
+        });
+
+        const initialState = await waitForSocketEvent<LobbyState>(
+          socket1,
+          "lobby_state"
+        );
+        expect(initialState.gamePhase).toBe("lobby");
+
+        socket2 = ioClient(serverUrl, {
+          path: "/api/socket.io",
+          transports: ["polling", "websocket"],
+        });
+
+        await waitForSocketEvent(socket2, "connect");
+        socket2.emit("join_lobby", {
+          instanceId: "game-start-lobby",
+          userId: "user-2",
+          username: "player2",
+          avatar: "https://example.com/avatar2.png",
+        });
+
+        await waitForSocketEvent<LobbyState>(socket2, "lobby_state");
+
+        socket3 = ioClient(serverUrl, {
+          path: "/api/socket.io",
+          transports: ["polling", "websocket"],
+        });
+
+        await waitForSocketEvent(socket3, "connect");
+        socket3.emit("join_lobby", {
+          instanceId: "game-start-lobby",
+          userId: "user-3",
+          username: "player3",
+          avatar: "https://example.com/avatar3.png",
+        });
+
+        await waitForSocketEvent<LobbyState>(socket3, "lobby_state");
+
+        // All players ready up
+        socket1.emit("player_ready");
+        const state1 = await waitForSocketEvent<LobbyState>(
+          socket1,
+          "lobby_state"
+        );
+        expect(state1.gamePhase).toBe("lobby");
+        expect(state1.players[0].isReady).toBe(true);
+        expect(state1.players[1].isReady).toBe(false);
+        expect(state1.players[2].isReady).toBe(false);
+
+        socket2?.emit("player_ready");
+        const state2 = await waitForSocketEvent<LobbyState>(
+          socket1,
+          "lobby_state"
+        );
+        expect(state2.gamePhase).toBe("lobby");
+        expect(state2.players[0].isReady).toBe(true);
+        expect(state2.players[1].isReady).toBe(true);
+        expect(state2.players[2].isReady).toBe(false);
+
+        socket3?.emit("player_ready");
+        const state3 = await waitForSocketEvent<LobbyState>(
+          socket1,
+          "lobby_state"
+        );
+        expect(state3.gamePhase).toBe("role_assignment");
+        expect(state3.players[0].isReady).toBe(true);
+        expect(state3.players[1].isReady).toBe(true);
+        expect(state3.players[2].isReady).toBe(true);
+      } finally {
+        socket1.disconnect();
+        socket2?.disconnect();
+        socket3?.disconnect();
+        await new Promise((resolve) => setTimeout(resolve, 100));
       }
-      expect(initialState.players[0].isReady).toBe(false);
-    } finally {
-      socket1.disconnect();
-      socket2?.disconnect();
-      socket3?.disconnect();
-      await new Promise((resolve) => setTimeout(resolve, 100));
-    }
-  });
-
-  it("resets ready state when roles are toggled", async () => {
-    const socket1 = ioClient(serverUrl, {
-      path: "/api/socket.io",
-      transports: ["polling", "websocket"],
     });
 
-    let socket2: ClientSocket | undefined;
-    let socket3: ClientSocket | undefined;
-
-    try {
-      await waitForSocketEvent(socket1, "connect");
-      socket1.emit("join_lobby", {
-        instanceId: "roles-reset-ready-lobby",
-        userId: "user-1",
-        username: "testuser",
-        avatar: "https://example.com/avatar.png",
-      });
-
-      const initialState = await waitForSocketEvent<LobbyState>(
-        socket1,
-        "lobby_state"
-      );
-      expect(initialState.isRoleConfigValid).toBe(false);
-      expect(initialState.players[0].isReady).toBe(false);
-
-      socket2 = ioClient(serverUrl, {
+    it("broadcasts game start to all clients", async () => {
+      const socket1 = ioClient(serverUrl, {
         path: "/api/socket.io",
         transports: ["polling", "websocket"],
       });
 
-      await waitForSocketEvent(socket2, "connect");
-      socket2.emit("join_lobby", {
-        instanceId: "roles-reset-ready-lobby",
-        userId: "user-2",
-        username: "player2",
-        avatar: "https://example.com/avatar2.png",
-      });
+      let socket2: ClientSocket | undefined;
+      let socket3: ClientSocket | undefined;
 
-      await waitForSocketEvent<LobbyState>(socket2, "lobby_state");
+      try {
+        await waitForSocketEvent(socket1, "connect");
+        socket1.emit("join_lobby", {
+          instanceId: "broadcast-start-lobby",
+          userId: "user-1",
+          username: "player1",
+          avatar: "https://example.com/avatar1.png",
+        });
 
-      socket3 = ioClient(serverUrl, {
-        path: "/api/socket.io",
-        transports: ["polling", "websocket"],
-      });
+        await waitForSocketEvent<LobbyState>(socket1, "lobby_state");
 
-      await waitForSocketEvent(socket3, "connect");
-      socket3.emit("join_lobby", {
-        instanceId: "roles-reset-ready-lobby",
-        userId: "user-3",
-        username: "player3",
-        avatar: "https://example.com/avatar3.png",
-      });
+        socket2 = ioClient(serverUrl, {
+          path: "/api/socket.io",
+          transports: ["polling", "websocket"],
+        });
 
-      await waitForSocketEvent<LobbyState>(socket3, "lobby_state");
+        await waitForSocketEvent(socket2, "connect");
+        socket2.emit("join_lobby", {
+          instanceId: "broadcast-start-lobby",
+          userId: "user-2",
+          username: "player2",
+          avatar: "https://example.com/avatar2.png",
+        });
 
-      // Ready up
-      socket1.emit("player_ready");
-      const readyState = await waitForSocketEvent<LobbyState>(
-        socket1,
-        "lobby_state"
-      );
-      expect(readyState.players[0].isReady).toBe(true);
+        await waitForSocketEvent<LobbyState>(socket2, "lobby_state");
 
-      // Toggle a role
-      socket1.emit("toggle_role", {
-        roleId: "villager-2",
-      });
-      const stateAfterToggle = await waitForSocketEvent<LobbyState>(
-        socket1,
-        "lobby_state"
-      );
+        socket3 = ioClient(serverUrl, {
+          path: "/api/socket.io",
+          transports: ["polling", "websocket"],
+        });
 
-      // Ready state should be reset
-      expect(stateAfterToggle.players[0].isReady).toBe(false);
-    } finally {
-      socket1.disconnect();
-      socket2?.disconnect();
-      socket3?.disconnect();
-      await new Promise((resolve) => setTimeout(resolve, 100));
-    }
-  });
+        await waitForSocketEvent(socket3, "connect");
+        socket3.emit("join_lobby", {
+          instanceId: "broadcast-start-lobby",
+          userId: "user-3",
+          username: "player3",
+          avatar: "https://example.com/avatar3.png",
+        });
 
-  it("resets ready state when new player joins", async () => {
-    const socket1 = ioClient(serverUrl, {
-      path: "/api/socket.io",
-      transports: ["polling", "websocket"],
+        await waitForSocketEvent<LobbyState>(socket3, "lobby_state");
+
+        // All players ready up
+        socket1.emit("player_ready");
+        await waitForSocketEvent<LobbyState>(socket1, "lobby_state");
+
+        socket2?.emit("player_ready");
+        await waitForSocketEvent<LobbyState>(socket1, "lobby_state");
+        await waitForSocketEvent<LobbyState>(socket2, "lobby_state");
+        await waitForSocketEvent<LobbyState>(socket3, "lobby_state");
+
+        socket3?.emit("player_ready");
+
+        const [state1, state2, state3] = await Promise.all([
+          waitForSocketEvent<LobbyState>(socket1, "lobby_state"),
+          waitForSocketEvent<LobbyState>(socket2, "lobby_state"),
+          waitForSocketEvent<LobbyState>(socket3, "lobby_state"),
+        ]);
+
+        expect(state1.gamePhase).toBe("role_assignment");
+        expect(state2.gamePhase).toBe("role_assignment");
+        expect(state3.gamePhase).toBe("role_assignment");
+
+        expect(state1.players).toHaveLength(3);
+        expect(state2.players).toHaveLength(3);
+        expect(state3.players).toHaveLength(3);
+
+        state1.players.forEach((p) => expect(p.isReady).toBe(true));
+        state2.players.forEach((p) => expect(p.isReady).toBe(true));
+        state3.players.forEach((p) => expect(p.isReady).toBe(true));
+      } finally {
+        socket1.disconnect();
+        socket2?.disconnect();
+        socket3?.disconnect();
+        await new Promise((resolve) => setTimeout(resolve, 100));
+      }
     });
 
-    let socket2: ClientSocket | undefined;
-    let socket3: ClientSocket | undefined;
-    let socket4: ClientSocket | undefined;
-
-    try {
-      await waitForSocketEvent(socket1, "connect");
-      socket1.emit("join_lobby", {
-        instanceId: "join-reset-ready-lobby",
-        userId: "user-1",
-        username: "testuser",
-        avatar: "https://example.com/avatar.png",
-      });
-
-      const initialState = await waitForSocketEvent<LobbyState>(
-        socket1,
-        "lobby_state"
-      );
-      expect(initialState.isRoleConfigValid).toBe(false);
-      expect(initialState.players[0].isReady).toBe(false);
-
-      socket2 = ioClient(serverUrl, {
+    it("transitions from lobby to night atomically", async () => {
+      const socket1 = ioClient(serverUrl, {
         path: "/api/socket.io",
         transports: ["polling", "websocket"],
       });
 
-      await waitForSocketEvent(socket2, "connect");
-      socket2.emit("join_lobby", {
-        instanceId: "join-reset-ready-lobby",
-        userId: "user-2",
-        username: "player2",
-        avatar: "https://example.com/avatar2.png",
-      });
+      let socket2: ClientSocket | undefined;
+      let socket3: ClientSocket | undefined;
 
-      await waitForSocketEvent<LobbyState>(socket2, "lobby_state");
+      try {
+        await waitForSocketEvent(socket1, "connect");
+        socket1.emit("join_lobby", {
+          instanceId: "atomic-transition-lobby",
+          userId: "user-1",
+          username: "player1",
+          avatar: "https://example.com/avatar1.png",
+        });
 
-      socket3 = ioClient(serverUrl, {
+        await waitForSocketEvent<LobbyState>(socket1, "lobby_state");
+
+        socket2 = ioClient(serverUrl, {
+          path: "/api/socket.io",
+          transports: ["polling", "websocket"],
+        });
+
+        await waitForSocketEvent(socket2, "connect");
+        socket2.emit("join_lobby", {
+          instanceId: "atomic-transition-lobby",
+          userId: "user-2",
+          username: "player2",
+          avatar: "https://example.com/avatar2.png",
+        });
+
+        await waitForSocketEvent<LobbyState>(socket2, "lobby_state");
+
+        socket3 = ioClient(serverUrl, {
+          path: "/api/socket.io",
+          transports: ["polling", "websocket"],
+        });
+
+        await waitForSocketEvent(socket3, "connect");
+        socket3.emit("join_lobby", {
+          instanceId: "atomic-transition-lobby",
+          userId: "user-3",
+          username: "player3",
+          avatar: "https://example.com/avatar3.png",
+        });
+
+        await waitForSocketEvent<LobbyState>(socket3, "lobby_state");
+
+        const phaseTransitions: string[] = [];
+        const collectTransitions = new Promise<void>((resolve) => {
+          const handler = (data: LobbyState) => {
+            phaseTransitions.push(data.gamePhase);
+            if (phaseTransitions.length === 3) {
+              socket1.off("lobby_state", handler);
+              resolve();
+            }
+          };
+          socket1.on("lobby_state", handler);
+        });
+
+        // Rapid successive ready-ups
+        socket1.emit("player_ready");
+        socket2?.emit("player_ready");
+        socket3?.emit("player_ready");
+
+        await collectTransitions;
+
+        // Verify that the phase only transitions once from lobby to role_assignment
+        const roleAssignmentCount = phaseTransitions.filter(
+          (p) => p === "role_assignment"
+        ).length;
+        expect(roleAssignmentCount).toBe(1);
+
+        // Verify the final state is night
+        expect(phaseTransitions[phaseTransitions.length - 1]).toBe(
+          "role_assignment"
+        );
+      } finally {
+        socket1.disconnect();
+        socket2?.disconnect();
+        socket3?.disconnect();
+        await new Promise((resolve) => setTimeout(resolve, 100));
+      }
+    });
+
+    it("requires minimum players to start", async () => {
+      const socket1 = ioClient(serverUrl, {
         path: "/api/socket.io",
         transports: ["polling", "websocket"],
       });
 
-      await waitForSocketEvent(socket3, "connect");
-      socket3.emit("join_lobby", {
-        instanceId: "join-reset-ready-lobby",
-        userId: "user-3",
-        username: "player3",
-        avatar: "https://example.com/avatar3.png",
-      });
+      let socket2: ClientSocket | undefined;
 
-      await waitForSocketEvent<LobbyState>(socket3, "lobby_state");
+      try {
+        await waitForSocketEvent(socket1, "connect");
+        socket1.emit("join_lobby", {
+          instanceId: "min-players-lobby",
+          userId: "user-1",
+          username: "player1",
+          avatar: "https://example.com/avatar1.png",
+        });
 
-      // Ready up
-      socket1.emit("player_ready");
-      const readyState = await waitForSocketEvent<LobbyState>(
-        socket1,
-        "lobby_state"
-      );
-      expect(readyState.players[0].isReady).toBe(true);
+        await waitForSocketEvent<LobbyState>(socket1, "lobby_state");
 
-      // New player joins
-      socket4 = ioClient(serverUrl, {
+        socket2 = ioClient(serverUrl, {
+          path: "/api/socket.io",
+          transports: ["polling", "websocket"],
+        });
+
+        await waitForSocketEvent(socket2, "connect");
+        socket2.emit("join_lobby", {
+          instanceId: "min-players-lobby",
+          userId: "user-2",
+          username: "player2",
+          avatar: "https://example.com/avatar2.png",
+        });
+
+        await waitForSocketEvent<LobbyState>(socket2, "lobby_state");
+
+        socket1.emit("player_ready");
+
+        // Should timeout because ready is prevented by MIN_PLAYERS check
+        try {
+          await waitForSocketEvent<LobbyState>(socket1, "lobby_state", 200);
+          expect.fail(
+            "Should not have received lobby_state with insufficient players"
+          );
+        } catch (error) {
+          if (
+            error instanceof Error &&
+            !error.message.includes("Event lobby_state timeout")
+          ) {
+            throw error;
+          }
+        }
+      } finally {
+        socket1.disconnect();
+        socket2?.disconnect();
+        await new Promise((resolve) => setTimeout(resolve, 100));
+      }
+    });
+
+    it("allows player to ready up when role config is valid", async () => {
+      const socket1 = ioClient(serverUrl, {
         path: "/api/socket.io",
         transports: ["polling", "websocket"],
       });
 
-      await waitForSocketEvent(socket4, "connect");
-      socket4.emit("join_lobby", {
-        instanceId: "reset-on-join-lobby",
-        userId: "user-4",
-        username: "player4",
-        avatar: "https://example.com/avatar4.png",
+      let socket2: ClientSocket | undefined;
+      let socket3: ClientSocket | undefined;
+
+      try {
+        await waitForSocketEvent(socket1, "connect");
+        socket1.emit("join_lobby", {
+          instanceId: "ready-up-valid-lobby",
+          userId: "user-1",
+          username: "testuser",
+          avatar: "https://example.com/avatar.png",
+        });
+
+        const initialState = await waitForSocketEvent<LobbyState>(
+          socket1,
+          "lobby_state"
+        );
+        expect(initialState.isRoleConfigValid).toBe(false);
+        expect(initialState.players[0].isReady).toBe(false);
+
+        socket2 = ioClient(serverUrl, {
+          path: "/api/socket.io",
+          transports: ["polling", "websocket"],
+        });
+
+        await waitForSocketEvent(socket2, "connect");
+        socket2.emit("join_lobby", {
+          instanceId: "ready-up-valid-lobby",
+          userId: "user-2",
+          username: "player2",
+          avatar: "https://example.com/avatar2.png",
+        });
+
+        await waitForSocketEvent<LobbyState>(socket2, "lobby_state");
+
+        socket3 = ioClient(serverUrl, {
+          path: "/api/socket.io",
+          transports: ["polling", "websocket"],
+        });
+
+        await waitForSocketEvent(socket3, "connect");
+        socket3.emit("join_lobby", {
+          instanceId: "ready-up-valid-lobby",
+          userId: "user-3",
+          username: "player3",
+          avatar: "https://example.com/avatar3.png",
+        });
+
+        await waitForSocketEvent<LobbyState>(socket3, "lobby_state");
+
+        // Now ready up
+        socket1.emit("player_ready");
+        const stateAfterPlayer1Ready = await waitForSocketEvent<LobbyState>(
+          socket1,
+          "lobby_state"
+        );
+        expect(stateAfterPlayer1Ready.players[0].isReady).toBe(true);
+        expect(stateAfterPlayer1Ready.players[1].isReady).toBe(false);
+        expect(stateAfterPlayer1Ready.players[2].isReady).toBe(false);
+
+        // Player 2 ready up
+        socket2?.emit("player_ready");
+        const stateAfterPlayer2Ready = await waitForSocketEvent<LobbyState>(
+          socket1,
+          "lobby_state"
+        );
+        expect(stateAfterPlayer2Ready.players[0].isReady).toBe(true);
+        expect(stateAfterPlayer2Ready.players[1].isReady).toBe(true);
+        expect(stateAfterPlayer2Ready.players[2].isReady).toBe(false);
+      } finally {
+        socket1.disconnect();
+        socket2?.disconnect();
+        socket3?.disconnect();
+        await new Promise((resolve) => setTimeout(resolve, 100));
+      }
+    });
+
+    it("prevents ready-up when role config is invalid", async () => {
+      const socket1 = ioClient(serverUrl, {
+        path: "/api/socket.io",
+        transports: ["polling", "websocket"],
       });
 
-      const stateAfterJoin = await waitForSocketEvent<LobbyState>(
-        socket4,
-        "lobby_state"
-      );
+      let socket2: ClientSocket | undefined;
+      let socket3: ClientSocket | undefined;
 
-      // Ready state should be reset
-      expect(stateAfterJoin.players[0].isReady).toBe(false);
-    } finally {
-      socket1.disconnect();
-      socket2?.disconnect();
-      socket3?.disconnect();
-      socket4?.disconnect();
-      await new Promise((resolve) => setTimeout(resolve, 100));
-    }
+      try {
+        await waitForSocketEvent(socket1, "connect");
+        socket1.emit("join_lobby", {
+          instanceId: "ready-up-invalid-lobby",
+          userId: "user-1",
+          username: "testuser",
+          avatar: "https://example.com/avatar.png",
+        });
+
+        const initialState = await waitForSocketEvent<LobbyState>(
+          socket1,
+          "lobby_state"
+        );
+        expect(initialState.isRoleConfigValid).toBe(false);
+        expect(initialState.players[0].isReady).toBe(false);
+
+        socket2 = ioClient(serverUrl, {
+          path: "/api/socket.io",
+          transports: ["polling", "websocket"],
+        });
+
+        await waitForSocketEvent(socket2, "connect");
+        socket2.emit("join_lobby", {
+          instanceId: "ready-up-invalid-lobby",
+          userId: "user-2",
+          username: "player2",
+          avatar: "https://example.com/avatar2.png",
+        });
+
+        await waitForSocketEvent<LobbyState>(socket2, "lobby_state");
+
+        socket3 = ioClient(serverUrl, {
+          path: "/api/socket.io",
+          transports: ["polling", "websocket"],
+        });
+
+        await waitForSocketEvent(socket3, "connect");
+        socket3.emit("join_lobby", {
+          instanceId: "ready-up-invalid-lobby",
+          userId: "user-3",
+          username: "player3",
+          avatar: "https://example.com/avatar3.png",
+        });
+
+        await waitForSocketEvent<LobbyState>(socket3, "lobby_state");
+
+        socket1.emit("toggle_role", {
+          roleId: "villager-1",
+        });
+        await waitForSocketEvent<LobbyState>(socket1, "lobby_state");
+
+        // Try to ready up with invalid config
+        socket1.emit("player_ready");
+
+        // Should timeout because invalid config prevents state change
+        try {
+          await waitForSocketEvent<LobbyState>(socket1, "lobby_state", 200);
+          expect.fail(
+            "Should not have received lobby_state with invalid config"
+          );
+        } catch (error) {
+          if (
+            error instanceof Error &&
+            !error.message.includes("Event lobby_state timeout")
+          ) {
+            throw error;
+          }
+        }
+        expect(initialState.players[0].isReady).toBe(false);
+      } finally {
+        socket1.disconnect();
+        socket2?.disconnect();
+        socket3?.disconnect();
+        await new Promise((resolve) => setTimeout(resolve, 100));
+      }
+    });
+
+    it("resets ready state when roles are toggled", async () => {
+      const socket1 = ioClient(serverUrl, {
+        path: "/api/socket.io",
+        transports: ["polling", "websocket"],
+      });
+
+      let socket2: ClientSocket | undefined;
+      let socket3: ClientSocket | undefined;
+
+      try {
+        await waitForSocketEvent(socket1, "connect");
+        socket1.emit("join_lobby", {
+          instanceId: "roles-reset-ready-lobby",
+          userId: "user-1",
+          username: "testuser",
+          avatar: "https://example.com/avatar.png",
+        });
+
+        const initialState = await waitForSocketEvent<LobbyState>(
+          socket1,
+          "lobby_state"
+        );
+        expect(initialState.isRoleConfigValid).toBe(false);
+        expect(initialState.players[0].isReady).toBe(false);
+
+        socket2 = ioClient(serverUrl, {
+          path: "/api/socket.io",
+          transports: ["polling", "websocket"],
+        });
+
+        await waitForSocketEvent(socket2, "connect");
+        socket2.emit("join_lobby", {
+          instanceId: "roles-reset-ready-lobby",
+          userId: "user-2",
+          username: "player2",
+          avatar: "https://example.com/avatar2.png",
+        });
+
+        await waitForSocketEvent<LobbyState>(socket2, "lobby_state");
+
+        socket3 = ioClient(serverUrl, {
+          path: "/api/socket.io",
+          transports: ["polling", "websocket"],
+        });
+
+        await waitForSocketEvent(socket3, "connect");
+        socket3.emit("join_lobby", {
+          instanceId: "roles-reset-ready-lobby",
+          userId: "user-3",
+          username: "player3",
+          avatar: "https://example.com/avatar3.png",
+        });
+
+        await waitForSocketEvent<LobbyState>(socket3, "lobby_state");
+
+        // Ready up
+        socket1.emit("player_ready");
+        const readyState = await waitForSocketEvent<LobbyState>(
+          socket1,
+          "lobby_state"
+        );
+        expect(readyState.players[0].isReady).toBe(true);
+
+        // Toggle a role
+        socket1.emit("toggle_role", {
+          roleId: "villager-2",
+        });
+        const stateAfterToggle = await waitForSocketEvent<LobbyState>(
+          socket1,
+          "lobby_state"
+        );
+
+        // Ready state should be reset
+        expect(stateAfterToggle.players[0].isReady).toBe(false);
+      } finally {
+        socket1.disconnect();
+        socket2?.disconnect();
+        socket3?.disconnect();
+        await new Promise((resolve) => setTimeout(resolve, 100));
+      }
+    });
+
+    it("resets ready state when new player joins", async () => {
+      const socket1 = ioClient(serverUrl, {
+        path: "/api/socket.io",
+        transports: ["polling", "websocket"],
+      });
+
+      let socket2: ClientSocket | undefined;
+      let socket3: ClientSocket | undefined;
+      let socket4: ClientSocket | undefined;
+
+      try {
+        await waitForSocketEvent(socket1, "connect");
+        socket1.emit("join_lobby", {
+          instanceId: "join-reset-ready-lobby",
+          userId: "user-1",
+          username: "testuser",
+          avatar: "https://example.com/avatar.png",
+        });
+
+        const initialState = await waitForSocketEvent<LobbyState>(
+          socket1,
+          "lobby_state"
+        );
+        expect(initialState.isRoleConfigValid).toBe(false);
+        expect(initialState.players[0].isReady).toBe(false);
+
+        socket2 = ioClient(serverUrl, {
+          path: "/api/socket.io",
+          transports: ["polling", "websocket"],
+        });
+
+        await waitForSocketEvent(socket2, "connect");
+        socket2.emit("join_lobby", {
+          instanceId: "join-reset-ready-lobby",
+          userId: "user-2",
+          username: "player2",
+          avatar: "https://example.com/avatar2.png",
+        });
+
+        await waitForSocketEvent<LobbyState>(socket2, "lobby_state");
+
+        socket3 = ioClient(serverUrl, {
+          path: "/api/socket.io",
+          transports: ["polling", "websocket"],
+        });
+
+        await waitForSocketEvent(socket3, "connect");
+        socket3.emit("join_lobby", {
+          instanceId: "join-reset-ready-lobby",
+          userId: "user-3",
+          username: "player3",
+          avatar: "https://example.com/avatar3.png",
+        });
+
+        await waitForSocketEvent<LobbyState>(socket3, "lobby_state");
+
+        // Ready up
+        socket1.emit("player_ready");
+        const readyState = await waitForSocketEvent<LobbyState>(
+          socket1,
+          "lobby_state"
+        );
+        expect(readyState.players[0].isReady).toBe(true);
+
+        // New player joins
+        socket4 = ioClient(serverUrl, {
+          path: "/api/socket.io",
+          transports: ["polling", "websocket"],
+        });
+
+        await waitForSocketEvent(socket4, "connect");
+        socket4.emit("join_lobby", {
+          instanceId: "reset-on-join-lobby",
+          userId: "user-4",
+          username: "player4",
+          avatar: "https://example.com/avatar4.png",
+        });
+
+        const stateAfterJoin = await waitForSocketEvent<LobbyState>(
+          socket4,
+          "lobby_state"
+        );
+
+        // Ready state should be reset
+        expect(stateAfterJoin.players[0].isReady).toBe(false);
+      } finally {
+        socket1.disconnect();
+        socket2?.disconnect();
+        socket3?.disconnect();
+        socket4?.disconnect();
+        await new Promise((resolve) => setTimeout(resolve, 100));
+      }
+    });
   });
 });

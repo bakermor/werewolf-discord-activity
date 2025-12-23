@@ -52,6 +52,7 @@ export interface LobbyState {
   availableRoles: Role[];
   selectedRoles: string[];
   isRoleConfigValid: boolean;
+  gamePhase: string;
 }
 
 // Helper function to create default role configuration
@@ -104,6 +105,14 @@ function resetPlayersReadiness(lobby: LobbyState): void {
   });
 }
 
+// Helper function to check if all players are ready
+function allPlayersReady(lobby: LobbyState): boolean {
+  if (lobby.players.length === 0) {
+    return false;
+  }
+  return lobby.players.every((p) => p.isReady === true);
+}
+
 io.on("connection", (socket) => {
   console.log("New socket connection:", socket.id);
 
@@ -130,6 +139,7 @@ io.on("connection", (socket) => {
         availableRoles,
         selectedRoles,
         isRoleConfigValid: false,
+        gamePhase: "lobby",
       };
       lobbies.set(instanceId, lobby);
     }
@@ -149,6 +159,7 @@ io.on("connection", (socket) => {
       availableRoles: lobby.availableRoles,
       selectedRoles: [...lobby.selectedRoles],
       isRoleConfigValid: lobby.isRoleConfigValid,
+      gamePhase: lobby.gamePhase,
     });
   });
 
@@ -198,6 +209,7 @@ io.on("connection", (socket) => {
       availableRoles: lobby.availableRoles,
       selectedRoles: [...lobby.selectedRoles],
       isRoleConfigValid: lobby.isRoleConfigValid,
+      gamePhase: lobby.gamePhase,
     });
   });
 
@@ -249,6 +261,12 @@ io.on("connection", (socket) => {
 
     player.isReady = true;
 
+    // Check if all players are ready and start the game if so
+    if (allPlayersReady(lobby) && lobby.gamePhase === "lobby") {
+      lobby.gamePhase = "role_assignment";
+      console.log(`Game started in lobby ${instanceId}`);
+    }
+
     // Broadcast updated state
     io.to(instanceId).emit("lobby_state", {
       instanceId: lobby.instanceId,
@@ -257,6 +275,7 @@ io.on("connection", (socket) => {
       availableRoles: lobby.availableRoles,
       selectedRoles: [...lobby.selectedRoles],
       isRoleConfigValid: lobby.isRoleConfigValid,
+      gamePhase: lobby.gamePhase,
     });
   });
 
@@ -282,6 +301,7 @@ io.on("connection", (socket) => {
         availableRoles: lobby.availableRoles,
         selectedRoles: [...lobby.selectedRoles],
         isRoleConfigValid: lobby.isRoleConfigValid,
+        gamePhase: lobby.gamePhase,
       });
     }
   });
