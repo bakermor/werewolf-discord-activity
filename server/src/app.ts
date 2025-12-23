@@ -27,6 +27,9 @@ export const io = new Server(server, {
 
 app.use(express.json());
 
+const MIN_PLAYERS = 3;
+const MAX_PLAYERS = 5;
+
 // Player interface
 interface Player {
   userId: string;
@@ -188,6 +191,65 @@ io.on("connection", (socket) => {
     resetPlayersReadiness(lobby);
 
     // Broadcast updated lobby state to all clients
+    io.to(instanceId).emit("lobby_state", {
+      instanceId: lobby.instanceId,
+      createdAt: lobby.createdAt.toISOString(),
+      players: lobby.players,
+      availableRoles: lobby.availableRoles,
+      selectedRoles: [...lobby.selectedRoles],
+      isRoleConfigValid: lobby.isRoleConfigValid,
+    });
+  });
+
+  socket.on("player_ready", () => {
+    console.log(
+      `User ${socket.data.userId} ready up in lobby ${socket.data.instanceId}`
+    );
+
+    const instanceId = socket.data.instanceId;
+    if (!instanceId) {
+      console.log("No instanceId in socket data, ignoring player_ready");
+      return;
+    }
+
+    const lobby = lobbies.get(instanceId);
+    if (!lobby) {
+      console.log(`Lobby ${instanceId} not found, ignoring player_ready`);
+      return;
+    }
+
+    if (!lobby.isRoleConfigValid) {
+      console.log(
+        `Role config: ${lobby.selectedRoles.length}, ${lobby.players.length}`
+      );
+      console.log(
+        `Role config invalid for lobby ${instanceId}, ignoring player_ready`
+      );
+      return;
+    }
+
+    if (
+      lobby.players.length < MIN_PLAYERS ||
+      lobby.players.length > MAX_PLAYERS
+    ) {
+      console.log(
+        `Invalid number of players in lobby ${instanceId}, ignoring player_ready`
+      );
+      return;
+    }
+
+    // Find player and set isReady = true
+    const player = lobby.players.find((p) => p.userId === socket.data.userId);
+    if (!player) {
+      console.log(
+        `Player ${socket.data.userId} not found in lobby ${instanceId}, ignoring player_ready`
+      );
+      return;
+    }
+
+    player.isReady = true;
+
+    // Broadcast updated state
     io.to(instanceId).emit("lobby_state", {
       instanceId: lobby.instanceId,
       createdAt: lobby.createdAt.toISOString(),
