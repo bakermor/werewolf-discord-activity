@@ -27,11 +27,15 @@ export const io = new Server(server, {
 
 app.use(express.json());
 
+const MIN_PLAYERS = 3;
+const MAX_PLAYERS = 5;
+
 // Player interface
 interface Player {
   userId: string;
   username: string;
   avatar: string;
+  isReady: boolean;
 }
 
 // Role interface
@@ -48,6 +52,7 @@ export interface LobbyState {
   availableRoles: Role[];
   selectedRoles: string[];
   isRoleConfigValid: boolean;
+  gamePhase: string;
 }
 
 // Helper function to create default role configuration
@@ -94,6 +99,20 @@ function validateRoleConfig(lobby: LobbyState): boolean {
   return lobby.selectedRoles.length === lobby.players.length + 3;
 }
 
+function resetPlayersReadiness(lobby: LobbyState): void {
+  lobby.players.forEach((player) => {
+    player.isReady = false;
+  });
+}
+
+// Helper function to check if all players are ready
+function allPlayersReady(lobby: LobbyState): boolean {
+  if (lobby.players.length === 0) {
+    return false;
+  }
+  return lobby.players.every((p) => p.isReady === true);
+}
+
 io.on("connection", (socket) => {
   console.log("New socket connection:", socket.id);
 
@@ -120,15 +139,17 @@ io.on("connection", (socket) => {
         availableRoles,
         selectedRoles,
         isRoleConfigValid: false,
+        gamePhase: "lobby",
       };
       lobbies.set(instanceId, lobby);
     }
 
     // Add player to lobby (deduped by userId)
-    const player: Player = { userId, username, avatar };
+    const player: Player = { userId, username, avatar, isReady: false };
     addPlayerToLobby(lobby, player);
 
     lobby.isRoleConfigValid = validateRoleConfig(lobby);
+    resetPlayersReadiness(lobby);
 
     // Broadcast lobby state to clients
     io.to(instanceId).emit("lobby_state", {
@@ -138,6 +159,7 @@ io.on("connection", (socket) => {
       availableRoles: lobby.availableRoles,
       selectedRoles: [...lobby.selectedRoles],
       isRoleConfigValid: lobby.isRoleConfigValid,
+      gamePhase: lobby.gamePhase,
     });
   });
 
@@ -176,6 +198,9 @@ io.on("connection", (socket) => {
 
     lobby.isRoleConfigValid = validateRoleConfig(lobby);
 
+    // Reset all players' readiness when roles change
+    resetPlayersReadiness(lobby);
+
     // Broadcast updated lobby state to all clients
     io.to(instanceId).emit("lobby_state", {
       instanceId: lobby.instanceId,
@@ -184,6 +209,73 @@ io.on("connection", (socket) => {
       availableRoles: lobby.availableRoles,
       selectedRoles: [...lobby.selectedRoles],
       isRoleConfigValid: lobby.isRoleConfigValid,
+      gamePhase: lobby.gamePhase,
+    });
+  });
+
+  socket.on("player_ready", () => {
+    console.log(
+      `User ${socket.data.userId} ready up in lobby ${socket.data.instanceId}`
+    );
+
+    const instanceId = socket.data.instanceId;
+    if (!instanceId) {
+      console.log("No instanceId in socket data, ignoring player_ready");
+      return;
+    }
+
+    const lobby = lobbies.get(instanceId);
+    if (!lobby) {
+      console.log(`Lobby ${instanceId} not found, ignoring player_ready`);
+      return;
+    }
+
+    if (!lobby.isRoleConfigValid) {
+      console.log(
+        `Role config: ${lobby.selectedRoles.length}, ${lobby.players.length}`
+      );
+      console.log(
+        `Role config invalid for lobby ${instanceId}, ignoring player_ready`
+      );
+      return;
+    }
+
+    if (
+      lobby.players.length < MIN_PLAYERS ||
+      lobby.players.length > MAX_PLAYERS
+    ) {
+      console.log(
+        `Invalid number of players in lobby ${instanceId}, ignoring player_ready`
+      );
+      return;
+    }
+
+    // Find player and set isReady = true
+    const player = lobby.players.find((p) => p.userId === socket.data.userId);
+    if (!player) {
+      console.log(
+        `Player ${socket.data.userId} not found in lobby ${instanceId}, ignoring player_ready`
+      );
+      return;
+    }
+
+    player.isReady = true;
+
+    // Check if all players are ready and start the game if so
+    if (allPlayersReady(lobby) && lobby.gamePhase === "lobby") {
+      lobby.gamePhase = "role_assignment";
+      console.log(`Game started in lobby ${instanceId}`);
+    }
+
+    // Broadcast updated state
+    io.to(instanceId).emit("lobby_state", {
+      instanceId: lobby.instanceId,
+      createdAt: lobby.createdAt.toISOString(),
+      players: lobby.players,
+      availableRoles: lobby.availableRoles,
+      selectedRoles: [...lobby.selectedRoles],
+      isRoleConfigValid: lobby.isRoleConfigValid,
+      gamePhase: lobby.gamePhase,
     });
   });
 
@@ -200,6 +292,7 @@ io.on("connection", (socket) => {
       );
 
       lobby.isRoleConfigValid = validateRoleConfig(lobby);
+      resetPlayersReadiness(lobby);
 
       io.to(socket.data.instanceId).emit("lobby_state", {
         instanceId: lobby.instanceId,
@@ -208,6 +301,7 @@ io.on("connection", (socket) => {
         availableRoles: lobby.availableRoles,
         selectedRoles: [...lobby.selectedRoles],
         isRoleConfigValid: lobby.isRoleConfigValid,
+        gamePhase: lobby.gamePhase,
       });
     }
   });

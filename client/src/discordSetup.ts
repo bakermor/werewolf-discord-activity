@@ -8,6 +8,7 @@ export interface Player {
   userId: string;
   username: string;
   avatar: string;
+  isReady: boolean;
 }
 
 export interface Role {
@@ -22,6 +23,7 @@ export interface LobbyState {
   availableRoles: Role[];
   selectedRoles: string[];
   isRoleConfigValid: boolean;
+  gamePhase: string;
 }
 
 let auth: Auth;
