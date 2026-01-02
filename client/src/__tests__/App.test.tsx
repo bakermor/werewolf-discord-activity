@@ -962,20 +962,28 @@ describe("App", () => {
         expect(screen.getByText("Select Roles")).toBeInTheDocument();
       });
 
+      await waitFor(() => {
+        const roleCards = screen.getAllByTestId("role-card");
+        expect(roleCards.length).toBeGreaterThan(6);
+      });
+
       const roleCards = screen.getAllByTestId("role-card");
-      expect(roleCards.length).toBeGreaterThan(6);
+      const targetCard = roleCards[6] as HTMLElement;
 
-      const inactiveCard = roleCards[6] as HTMLElement;
-
-      expect(inactiveCard.className).toContain("roleCardInactive");
+      // Verify initial state
+      await waitFor(() => {
+        expect(targetCard.className).toContain("roleCardInactive");
+      });
 
       // Click to toggle to active
       await act(async () => {
-        inactiveCard.click();
+        targetCard.click();
       });
 
       await waitFor(() => {
-        expect(inactiveCard.className).toContain("roleCardActive");
+        const updatedRoleCards = screen.getAllByTestId("role-card");
+        const updatedCard = updatedRoleCards[6] as HTMLElement;
+        expect(updatedCard.className).toContain("roleCardActive");
       });
     });
 
@@ -1006,29 +1014,42 @@ describe("App", () => {
         expect(screen.getByText("Select Roles")).toBeInTheDocument();
       });
 
-      const roleCards = screen.getAllByTestId("role-card");
-      expect(roleCards.length).toBeGreaterThan(6);
+      await waitFor(() => {
+        const roleCards = screen.getAllByTestId("role-card");
+        expect(roleCards.length).toBeGreaterThan(6);
+      });
 
-      const inactiveCard = roleCards[6] as HTMLElement;
+      let roleCards = screen.getAllByTestId("role-card");
+      let targetCard = roleCards[6] as HTMLElement;
 
-      expect(inactiveCard.className).toContain("roleCardInactive");
+      // Verify initial state
+      await waitFor(() => {
+        expect(targetCard.className).toContain("roleCardInactive");
+      });
 
-      // First click
+      // First click to toggle to active
       await act(async () => {
-        inactiveCard.click();
+        targetCard.click();
       });
 
       await waitFor(() => {
-        expect(inactiveCard.className).toContain("roleCardActive");
+        const updatedRoleCards = screen.getAllByTestId("role-card");
+        const updatedCard = updatedRoleCards[6] as HTMLElement;
+        expect(updatedCard.className).toContain("roleCardActive");
       });
 
-      // Second click
+      roleCards = screen.getAllByTestId("role-card");
+      targetCard = roleCards[6] as HTMLElement;
+
+      // Second click to toggle back to inactive
       await act(async () => {
-        inactiveCard.click();
+        targetCard.click();
       });
 
       await waitFor(() => {
-        expect(inactiveCard.className).toContain("roleCardInactive");
+        const finalRoleCards = screen.getAllByTestId("role-card");
+        const finalCard = finalRoleCards[6] as HTMLElement;
+        expect(finalCard.className).toContain("roleCardInactive");
       });
     });
 
