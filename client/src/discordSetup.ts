@@ -16,6 +16,12 @@ export interface Role {
   name: string;
 }
 
+export interface CurrentUser {
+  userId: string;
+  username: string;
+  avatar: string;
+}
+
 export interface LobbyState {
   instanceId: string;
   createdAt: string;
@@ -88,7 +94,7 @@ export async function setupDiscordSdk() {
 
     const { user } = auth;
 
-    const playerData = {
+    const playerData: CurrentUser = {
       userId: user.id,
       username: user.global_name ?? `${user.username}#${user.discriminator}`,
       avatar: user.avatar
@@ -143,7 +149,7 @@ export async function setupDiscordSdk() {
       });
     });
 
-    return { auth, lobby, socket };
+    return { auth, lobby, socket, playerData };
   } catch (error) {
     console.error("Discord SDK setup failed:", error);
     throw error;
