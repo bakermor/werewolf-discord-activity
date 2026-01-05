@@ -17,14 +17,14 @@ vi.mock("../discordSdk", () => ({
   },
 }));
 
-vi.mock("../discordSetup", () => {
+vi.mock("../setup", () => {
   return {
     setupDiscordSdk: vi.fn(),
   };
 });
 
-import { setupDiscordSdk } from "../discordSetup";
-import type { CurrentUser, Role } from "../discordSetup";
+import { setupDiscordSdk } from "../setup";
+import type { CurrentUser, Role } from "../types/lobby.types";
 
 // Helper function to create mock current user
 const createMockCurrentUser = (): CurrentUser => ({

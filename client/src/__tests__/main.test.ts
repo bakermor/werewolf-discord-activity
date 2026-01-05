@@ -46,7 +46,7 @@ vi.stubEnv("VITE_DISCORD_CLIENT_ID", "initial-client-id");
 // Import after all mocks are set up
 import { io } from "socket.io-client";
 import { discordSdk } from "../discordSdk";
-import { setupDiscordSdk } from "../discordSetup";
+import { setupDiscordSdk } from "../setup";
 
 describe("setupDiscordSdk", () => {
   const mockClientId = "test-client-id";
