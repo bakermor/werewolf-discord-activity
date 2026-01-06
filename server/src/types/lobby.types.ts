@@ -10,6 +10,8 @@ export interface Role {
   name: string;
 }
 
+export type GamePhase = "lobby" | "role_assignment";
+
 export interface LobbyState {
   instanceId: string;
   createdAt: Date;
@@ -17,7 +19,7 @@ export interface LobbyState {
   availableRoles: Role[];
   selectedRoles: string[];
   isRoleConfigValid: boolean;
-  gamePhase: string;
+  gamePhase: GamePhase;
 }
 
 export const MIN_PLAYERS = 3;

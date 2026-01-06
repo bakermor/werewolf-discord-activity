@@ -21,6 +21,8 @@ export interface CurrentUser {
   avatar: string;
 }
 
+export type GamePhase = "lobby" | "role_assignment";
+
 export interface LobbyState {
   instanceId: string;
   createdAt: string;
@@ -28,7 +30,7 @@ export interface LobbyState {
   availableRoles: Role[];
   selectedRoles: string[];
   isRoleConfigValid: boolean;
-  gamePhase: string;
+  gamePhase: GamePhase;
 }
 
 export interface SetupResult {
