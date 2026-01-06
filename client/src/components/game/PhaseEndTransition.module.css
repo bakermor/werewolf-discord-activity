@@ -1,0 +1,51 @@
+.container {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100vw;
+  height: 100vh;
+  pointer-events: none;
+  z-index: 9999;
+}
+
+.overlay {
+  position: absolute;
+  left: 0;
+  width: 100%;
+  /* Make it tall enough: viewport + gradient zone */
+  height: 300vh;
+  /* Gradient in the middle portion */
+  background: linear-gradient(
+    to bottom,
+    rgba(0, 0, 0, 1) 0%,
+    rgba(0, 0, 0, 1) calc(100% - 30vh),
+    rgba(0, 0, 0, 0) 100%
+  );
+}
+
+.fadeFromTop {
+  /* Start with bottom of element at top of screen */
+  top: -300vh;
+  animation: slideDown 2s ease-in-out forwards;
+}
+
+@keyframes slideDown {
+  to {
+    /* End positioned so solid black covers screen */
+    top: 0;
+  }
+}
+
+.radialFade {
+  animation: radialFadeIn 0.8s ease-in 0.3s forwards;
+  background: radial-gradient(circle, rgba(0, 0, 0, 0) 0%, #000000 70%);
+}
+
+@keyframes radialFadeIn {
+  from {
+    clip-path: circle(0% at 50% 50%);
+  }
+  to {
+    clip-path: circle(150% at 50% 50%);
+  }
+}

@@ -1,4 +1,5 @@
 import styles from "./App.module.css";
+import { RoleAssignmentView } from "./components/game/RoleAssignmentView";
 import { LobbyView } from "./components/lobby/LobbyView";
 import { useLobby } from "./hooks/useLobby";
 
@@ -22,6 +23,11 @@ function App() {
       <LobbyView lobby={lobby} socket={socket} currentUser={currentUser} />
     );
   }
+
+  if (lobby.gamePhase === "role_assignment") {
+    return <RoleAssignmentView />;
+  }
+
   return null;
 }
 
