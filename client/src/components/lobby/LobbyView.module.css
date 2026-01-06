@@ -1,0 +1,16 @@
+.container {
+  display: flex;
+  justify-content: flex-start;
+  align-items: flex-start;
+  gap: 2rem;
+  padding: 2rem;
+  min-height: 100vh;
+  font-family: "Spectral", serif;
+}
+
+.rolesContainer {
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  gap: 1rem;
+}

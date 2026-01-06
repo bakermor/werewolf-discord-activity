@@ -416,6 +416,8 @@ describe("App", () => {
           isReady: false,
         },
       ],
+      ...createMockRoleData(),
+      gamePhase: "lobby",
     };
 
     // Trigger the lobby_state callback
