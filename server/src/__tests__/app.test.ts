@@ -10,7 +10,8 @@ import {
   it,
   vi,
 } from "vitest";
-import { app, LobbyState, server } from "../app";
+import { app, server } from "../app";
+import { LobbyState } from "../types/lobby.types";
 
 vi.mock("../utils", () => ({
   fetchAndRetry: vi.fn(),
@@ -2260,6 +2261,396 @@ describe("Socket.IO Lobby Management", () => {
         socket3?.disconnect();
         socket4?.disconnect();
         await new Promise((resolve) => setTimeout(resolve, 100));
+      }
+    });
+  });
+
+  describe("Role Assignment", () => {
+    it("assigns each player exactly one role", async () => {
+      const socket1 = ioClient(serverUrl, {
+        path: "/api/socket.io",
+        transports: ["polling", "websocket"],
+      });
+
+      let socket2: ClientSocket | undefined;
+      let socket3: ClientSocket | undefined;
+
+      try {
+        await waitForSocketEvent(socket1, "connect");
+        socket1.emit("join_lobby", {
+          instanceId: "role-assignment-test",
+          userId: "user-1",
+          username: "player1",
+          avatar: "https://example.com/avatar1.png",
+        });
+
+        await waitForSocketEvent<LobbyState>(socket1, "lobby_state");
+
+        socket2 = ioClient(serverUrl, {
+          path: "/api/socket.io",
+          transports: ["polling", "websocket"],
+        });
+
+        await waitForSocketEvent(socket2, "connect");
+        socket2.emit("join_lobby", {
+          instanceId: "role-assignment-test",
+          userId: "user-2",
+          username: "player2",
+          avatar: "https://example.com/avatar2.png",
+        });
+
+        await waitForSocketEvent<LobbyState>(socket2, "lobby_state");
+
+        socket3 = ioClient(serverUrl, {
+          path: "/api/socket.io",
+          transports: ["polling", "websocket"],
+        });
+
+        await waitForSocketEvent(socket3, "connect");
+        socket3.emit("join_lobby", {
+          instanceId: "role-assignment-test",
+          userId: "user-3",
+          username: "player3",
+          avatar: "https://example.com/avatar3.png",
+        });
+
+        await waitForSocketEvent<LobbyState>(socket3, "lobby_state");
+
+        // All players ready up
+        socket1.emit("player_ready");
+        await waitForSocketEvent<LobbyState>(socket1, "lobby_state");
+
+        socket2.emit("player_ready");
+        await waitForSocketEvent<LobbyState>(socket1, "lobby_state");
+
+        socket3.emit("player_ready");
+        const finalState = await waitForSocketEvent<LobbyState>(
+          socket1,
+          "lobby_state"
+        );
+
+        expect(finalState.gamePhase).toBe("role_assignment");
+
+        // Request roles for all players
+        socket1.emit("fetch_role");
+        socket2.emit("fetch_role");
+        socket3.emit("fetch_role");
+
+        const [role1, role2, role3] = await Promise.all([
+          waitForSocketEvent<{ assignedRole: string; currentRole: string }>(
+            socket1,
+            "role_assigned"
+          ),
+          waitForSocketEvent<{ assignedRole: string; currentRole: string }>(
+            socket2,
+            "role_assigned"
+          ),
+          waitForSocketEvent<{ assignedRole: string; currentRole: string }>(
+            socket3,
+            "role_assigned"
+          ),
+        ]);
+
+        // Each player has a role
+        expect(role1.assignedRole).toBeTruthy();
+        expect(role2.assignedRole).toBeTruthy();
+        expect(role3.assignedRole).toBeTruthy();
+
+        // All roles are from selectedRoles
+        expect(finalState.selectedRoles).toContain(role1.assignedRole);
+        expect(finalState.selectedRoles).toContain(role2.assignedRole);
+        expect(finalState.selectedRoles).toContain(role3.assignedRole);
+      } finally {
+        socket1.disconnect();
+        socket2?.disconnect();
+        socket3?.disconnect();
+        await new Promise((resolve) => setTimeout(resolve, 100));
+      }
+    });
+
+    it("does not include roles in lobby_state broadcasts", async () => {
+      const socket1 = ioClient(serverUrl, {
+        path: "/api/socket.io",
+        transports: ["polling", "websocket"],
+      });
+
+      let socket2: ClientSocket | undefined;
+      let socket3: ClientSocket | undefined;
+
+      try {
+        await waitForSocketEvent(socket1, "connect");
+        socket1.emit("join_lobby", {
+          instanceId: "no-role-broadcast",
+          userId: "user-1",
+          username: "player1",
+          avatar: "https://example.com/avatar1.png",
+        });
+
+        await waitForSocketEvent<LobbyState>(socket1, "lobby_state");
+
+        socket2 = ioClient(serverUrl, {
+          path: "/api/socket.io",
+          transports: ["polling", "websocket"],
+        });
+
+        await waitForSocketEvent(socket2, "connect");
+        socket2.emit("join_lobby", {
+          instanceId: "no-role-broadcast",
+          userId: "user-2",
+          username: "player2",
+          avatar: "https://example.com/avatar2.png",
+        });
+
+        await waitForSocketEvent<LobbyState>(socket2, "lobby_state");
+
+        socket3 = ioClient(serverUrl, {
+          path: "/api/socket.io",
+          transports: ["polling", "websocket"],
+        });
+
+        await waitForSocketEvent(socket3, "connect");
+        socket3.emit("join_lobby", {
+          instanceId: "no-role-broadcast",
+          userId: "user-3",
+          username: "player3",
+          avatar: "https://example.com/avatar3.png",
+        });
+
+        await waitForSocketEvent<LobbyState>(socket3, "lobby_state");
+
+        // Ready up all players
+        socket1.emit("player_ready");
+        await waitForSocketEvent<LobbyState>(socket1, "lobby_state");
+
+        socket2.emit("player_ready");
+        await waitForSocketEvent<LobbyState>(socket1, "lobby_state");
+
+        socket3.emit("player_ready");
+        const finalState = await waitForSocketEvent<LobbyState>(
+          socket1,
+          "lobby_state"
+        );
+
+        expect(finalState.gamePhase).toBe("role_assignment");
+
+        // Verify no role information in lobby state
+        expect(finalState).not.toHaveProperty("assignedRole");
+        expect(finalState).not.toHaveProperty("currentRole");
+        expect(finalState).not.toHaveProperty("centerCards");
+        expect(finalState).not.toHaveProperty("playerRoles");
+
+        // Verify players don't have role info
+        finalState.players.forEach((player) => {
+          expect(player).not.toHaveProperty("assignedRole");
+          expect(player).not.toHaveProperty("currentRole");
+        });
+      } finally {
+        socket1.disconnect();
+        socket2?.disconnect();
+        socket3?.disconnect();
+        await new Promise((resolve) => setTimeout(resolve, 100));
+      }
+    });
+
+    it("returns role only to requesting player", async () => {
+      const socket1 = ioClient(serverUrl, {
+        path: "/api/socket.io",
+        transports: ["polling", "websocket"],
+      });
+
+      let socket2: ClientSocket | undefined;
+      let socket3: ClientSocket | undefined;
+
+      try {
+        await waitForSocketEvent(socket1, "connect");
+        socket1.emit("join_lobby", {
+          instanceId: "private-role-fetch",
+          userId: "user-1",
+          username: "player1",
+          avatar: "https://example.com/avatar1.png",
+        });
+
+        await waitForSocketEvent<LobbyState>(socket1, "lobby_state");
+
+        socket2 = ioClient(serverUrl, {
+          path: "/api/socket.io",
+          transports: ["polling", "websocket"],
+        });
+
+        await waitForSocketEvent(socket2, "connect");
+        socket2.emit("join_lobby", {
+          instanceId: "private-role-fetch",
+          userId: "user-2",
+          username: "player2",
+          avatar: "https://example.com/avatar2.png",
+        });
+
+        await waitForSocketEvent<LobbyState>(socket2, "lobby_state");
+
+        socket3 = ioClient(serverUrl, {
+          path: "/api/socket.io",
+          transports: ["polling", "websocket"],
+        });
+
+        await waitForSocketEvent(socket3, "connect");
+        socket3.emit("join_lobby", {
+          instanceId: "private-role-fetch",
+          userId: "user-3",
+          username: "player3",
+          avatar: "https://example.com/avatar3.png",
+        });
+
+        await waitForSocketEvent<LobbyState>(socket3, "lobby_state");
+
+        // Ready up all players
+        socket1.emit("player_ready");
+        await waitForSocketEvent<LobbyState>(socket1, "lobby_state");
+
+        socket2.emit("player_ready");
+        await waitForSocketEvent<LobbyState>(socket1, "lobby_state");
+
+        socket3.emit("player_ready");
+        await waitForSocketEvent<LobbyState>(socket1, "lobby_state");
+
+        // Set up listeners to ensure socket2 doesn't receive socket1's role
+        let socket2ReceivedRole = false;
+        socket2.on("role_assigned", () => {
+          socket2ReceivedRole = true;
+        });
+
+        // Only socket1 requests role
+        socket1.emit("fetch_role");
+
+        const role1 = await waitForSocketEvent<{
+          assignedRole: string;
+          currentRole: string;
+        }>(socket1, "role_assigned");
+
+        expect(role1.assignedRole).toBeTruthy();
+
+        // Wait a bit to ensure socket2 doesn't receive anything
+        await new Promise((resolve) => setTimeout(resolve, 200));
+
+        // Verify socket2 did not receive role_assigned
+        expect(socket2ReceivedRole).toBe(false);
+      } finally {
+        socket1.disconnect();
+        socket2?.disconnect();
+        socket3?.disconnect();
+        await new Promise((resolve) => setTimeout(resolve, 100));
+      }
+    });
+
+    it("contains all original roles in shuffled results", async () => {
+      for (let iteration = 0; iteration < 5; iteration++) {
+        const socket1 = ioClient(serverUrl, {
+          path: "/api/socket.io",
+          transports: ["polling", "websocket"],
+        });
+
+        let socket2: ClientSocket | undefined;
+        let socket3: ClientSocket | undefined;
+
+        try {
+          await waitForSocketEvent(socket1, "connect");
+          socket1.emit("join_lobby", {
+            instanceId: `shuffle-test-${iteration}`,
+            userId: "user-1",
+            username: "player1",
+            avatar: "https://example.com/avatar1.png",
+          });
+
+          await waitForSocketEvent<LobbyState>(socket1, "lobby_state");
+
+          socket2 = ioClient(serverUrl, {
+            path: "/api/socket.io",
+            transports: ["polling", "websocket"],
+          });
+
+          await waitForSocketEvent(socket2, "connect");
+          socket2.emit("join_lobby", {
+            instanceId: `shuffle-test-${iteration}`,
+            userId: "user-2",
+            username: "player2",
+            avatar: "https://example.com/avatar2.png",
+          });
+
+          await waitForSocketEvent<LobbyState>(socket2, "lobby_state");
+
+          socket3 = ioClient(serverUrl, {
+            path: "/api/socket.io",
+            transports: ["polling", "websocket"],
+          });
+
+          await waitForSocketEvent(socket3, "connect");
+          socket3.emit("join_lobby", {
+            instanceId: `shuffle-test-${iteration}`,
+            userId: "user-3",
+            username: "player3",
+            avatar: "https://example.com/avatar3.png",
+          });
+
+          const lobbyState = await waitForSocketEvent<LobbyState>(
+            socket3,
+            "lobby_state"
+          );
+
+          // Ready up all players
+          socket1.emit("player_ready");
+          await waitForSocketEvent<LobbyState>(socket1, "lobby_state");
+
+          socket2.emit("player_ready");
+          await waitForSocketEvent<LobbyState>(socket1, "lobby_state");
+
+          socket3.emit("player_ready");
+          await waitForSocketEvent<LobbyState>(socket1, "lobby_state");
+
+          // Get player roles
+          socket1.emit("fetch_role");
+          socket2.emit("fetch_role");
+          socket3.emit("fetch_role");
+
+          const [role1, role2, role3] = await Promise.all([
+            waitForSocketEvent<{ assignedRole: string; currentRole: string }>(
+              socket1,
+              "role_assigned"
+            ),
+            waitForSocketEvent<{ assignedRole: string; currentRole: string }>(
+              socket2,
+              "role_assigned"
+            ),
+            waitForSocketEvent<{ assignedRole: string; currentRole: string }>(
+              socket3,
+              "role_assigned"
+            ),
+          ]);
+
+          const assignedPlayerRoles = [
+            role1.assignedRole,
+            role2.assignedRole,
+            role3.assignedRole,
+          ];
+
+          // Center cards are the 3 roles not assigned to players
+          const centerRoles = lobbyState.selectedRoles.filter(
+            (roleId) => !assignedPlayerRoles.includes(roleId)
+          );
+
+          // All roles combined should match selectedRoles
+          const allAssignedRoles = [
+            ...assignedPlayerRoles,
+            ...centerRoles,
+          ].sort();
+          const selectedRoles = [...lobbyState.selectedRoles].sort();
+
+          expect(centerRoles).toHaveLength(3);
+          expect(allAssignedRoles).toEqual(selectedRoles);
+        } finally {
+          socket1.disconnect();
+          socket2?.disconnect();
+          socket3?.disconnect();
+          await new Promise((resolve) => setTimeout(resolve, 100));
+        }
       }
     });
   });

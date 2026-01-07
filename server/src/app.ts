@@ -6,6 +6,7 @@ import { Server } from "socket.io";
 import { registerSocketHandlers } from "./handlers/socketHandlers";
 import authRoutes from "./routes/auth.routes";
 import { LobbyService } from "./services/LobbyService";
+import { GameService } from "./services/GameService";
 
 dotenv.config({ path: "../.env" });
 
@@ -26,8 +27,9 @@ export const io = new Server(server, {
 app.use(express.json());
 
 const lobbyService = new LobbyService();
+const gameService = new GameService();
 
-registerSocketHandlers(io, lobbyService);
+registerSocketHandlers(io, lobbyService, gameService);
 
 app.use("/api", authRoutes);
 

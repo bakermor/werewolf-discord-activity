@@ -1,8 +1,13 @@
 import { Server, Socket } from "socket.io";
 import { LobbyService } from "../services/LobbyService";
+import { GameService } from "../services/GameService";
 import { Player, LobbyState } from "../types/lobby.types";
 
-export function registerSocketHandlers(io: Server, lobbyService: LobbyService) {
+export function registerSocketHandlers(
+  io: Server,
+  lobbyService: LobbyService,
+  gameService: GameService
+) {
   io.on("connection", (socket: Socket) => {
     console.log("New socket connection:", socket.id);
 
@@ -20,7 +25,11 @@ export function registerSocketHandlers(io: Server, lobbyService: LobbyService) {
     });
 
     socket.on("player_ready", () => {
-      handlePlayerReady(socket, io, lobbyService);
+      handlePlayerReady(socket, io, lobbyService, gameService);
+    });
+
+    socket.on("fetch_role", () => {
+      handleFetchRole(socket, gameService);
     });
 
     socket.on("disconnect", () => {
@@ -85,7 +94,8 @@ function handleToggleRole(
 function handlePlayerReady(
   socket: Socket,
   io: Server,
-  lobbyService: LobbyService
+  lobbyService: LobbyService,
+  gameService: GameService
 ) {
   const instanceId = socket.data.instanceId;
   if (!instanceId) return;
@@ -102,7 +112,26 @@ function handlePlayerReady(
   if (!player) return;
 
   lobbyService.startGame(lobby);
+
+  if (lobby.gamePhase === "role_assignment") {
+    gameService.createGame(lobby);
+  }
+
   emitLobbyState(io, lobby);
+}
+
+function handleFetchRole(socket: Socket, gameService: GameService) {
+  const { instanceId, userId } = socket.data;
+  if (!instanceId || !userId) return;
+
+  const playerRole = gameService.getPlayerRole(instanceId, userId);
+  if (!playerRole) return;
+
+  // Send role ONLY to requesting player (private event)
+  socket.emit("role_assigned", {
+    assignedRole: playerRole.assignedRole,
+    currentRole: playerRole.currentRole,
+  });
 }
 
 function handleDisconnect(
