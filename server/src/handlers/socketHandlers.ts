@@ -2,6 +2,10 @@ import { Server, Socket } from "socket.io";
 import { LobbyService } from "../services/LobbyService";
 import { GameService } from "../services/GameService";
 import { Player, LobbyState } from "../types/lobby.types";
+import {
+  setPlayerReady,
+  resetPlayersReadiness,
+} from "../utils/playerState";
 
 export function registerSocketHandlers(
   io: Server,
@@ -65,7 +69,7 @@ function handleJoinLobby(
   lobbyService.addPlayer(lobby, player);
 
   lobby.isRoleConfigValid = lobbyService.validateRoleConfig(lobby);
-  lobbyService.resetPlayersReadiness(lobby);
+  resetPlayersReadiness(lobby);
 
   emitLobbyState(io, lobby);
 }
@@ -86,7 +90,7 @@ function handleToggleRole(
   if (!result) return;
 
   lobby.isRoleConfigValid = lobbyService.validateRoleConfig(lobby);
-  lobbyService.resetPlayersReadiness(lobby);
+  resetPlayersReadiness(lobby);
 
   emitLobbyState(io, lobby);
 }
@@ -108,13 +112,14 @@ function handlePlayerReady(
   )
     return;
 
-  const player = lobbyService.setPlayerReady(lobby, socket.data.userId);
+  const player = setPlayerReady(lobby, socket.data.userId);
   if (!player) return;
 
-  lobbyService.startGame(lobby);
-
-  if (lobby.gamePhase === "role_assignment") {
-    gameService.createGame(lobby);
+  if (lobby.gamePhase === "lobby") {
+    if (lobbyService.startGame(lobby)) gameService.createGame(lobby);
+    
+  } else if (lobby.gamePhase === "role_assignment") {
+    gameService.startNight(lobby);
   }
 
   emitLobbyState(io, lobby);
@@ -147,7 +152,7 @@ function handleDisconnect(
 
   lobbyService.removePlayer(lobby, socket.data.userId);
   lobby.isRoleConfigValid = lobbyService.validateRoleConfig(lobby);
-  lobbyService.resetPlayersReadiness(lobby);
+  resetPlayersReadiness(lobby);
 
   emitLobbyState(io, lobby);
 }

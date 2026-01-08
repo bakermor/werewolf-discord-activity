@@ -1679,9 +1679,6 @@ describe("Socket.IO Lobby Management", () => {
           "lobby_state"
         );
         expect(state3.gamePhase).toBe("role_assignment");
-        expect(state3.players[0].isReady).toBe(true);
-        expect(state3.players[1].isReady).toBe(true);
-        expect(state3.players[2].isReady).toBe(true);
       } finally {
         socket1.disconnect();
         socket2?.disconnect();
@@ -1764,10 +1761,6 @@ describe("Socket.IO Lobby Management", () => {
         expect(state1.players).toHaveLength(3);
         expect(state2.players).toHaveLength(3);
         expect(state3.players).toHaveLength(3);
-
-        state1.players.forEach((p) => expect(p.isReady).toBe(true));
-        state2.players.forEach((p) => expect(p.isReady).toBe(true));
-        state3.players.forEach((p) => expect(p.isReady).toBe(true));
       } finally {
         socket1.disconnect();
         socket2?.disconnect();
@@ -2651,6 +2644,124 @@ describe("Socket.IO Lobby Management", () => {
           socket3?.disconnect();
           await new Promise((resolve) => setTimeout(resolve, 100));
         }
+      }
+    });
+
+    it("starts night when all players are ready", async () => {
+      const socket1 = ioClient(serverUrl, {
+        path: "/api/socket.io",
+        transports: ["polling", "websocket"],
+      });
+
+      let socket2: ClientSocket | undefined;
+      let socket3: ClientSocket | undefined;
+
+      try {
+        await waitForSocketEvent(socket1, "connect");
+        socket1.emit("join_lobby", {
+          instanceId: "night-transition-test",
+          userId: "user-1",
+          username: "player1",
+          avatar: "https://example.com/avatar1.png",
+        });
+
+        await waitForSocketEvent<LobbyState>(socket1, "lobby_state");
+
+        socket2 = ioClient(serverUrl, {
+          path: "/api/socket.io",
+          transports: ["polling", "websocket"],
+        });
+
+        await waitForSocketEvent(socket2, "connect");
+        socket2.emit("join_lobby", {
+          instanceId: "night-transition-test",
+          userId: "user-2",
+          username: "player2",
+          avatar: "https://example.com/avatar2.png",
+        });
+
+        await waitForSocketEvent<LobbyState>(socket2, "lobby_state");
+
+        socket3 = ioClient(serverUrl, {
+          path: "/api/socket.io",
+          transports: ["polling", "websocket"],
+        });
+
+        await waitForSocketEvent(socket3, "connect");
+        socket3.emit("join_lobby", {
+          instanceId: "night-transition-test",
+          userId: "user-3",
+          username: "player3",
+          avatar: "https://example.com/avatar3.png",
+        });
+
+        await waitForSocketEvent<LobbyState>(socket3, "lobby_state");
+
+        // Phase 1: Transition from lobby to role_assignment
+        socket1.emit("player_ready");
+        await waitForSocketEvent<LobbyState>(socket1, "lobby_state");
+
+        socket2.emit("player_ready");
+        await waitForSocketEvent<LobbyState>(socket1, "lobby_state");
+
+        socket3.emit("player_ready");
+        const roleAssignmentState = await waitForSocketEvent<LobbyState>(
+          socket1,
+          "lobby_state"
+        );
+
+        expect(roleAssignmentState.gamePhase).toBe("role_assignment");
+
+        // Fetch roles for all players
+        socket1.emit("fetch_role");
+        socket2.emit("fetch_role");
+        socket3.emit("fetch_role");
+
+        await Promise.all([
+          waitForSocketEvent<{ assignedRole: string; currentRole: string }>(
+            socket1,
+            "role_assigned"
+          ),
+          waitForSocketEvent<{ assignedRole: string; currentRole: string }>(
+            socket2,
+            "role_assigned"
+          ),
+          waitForSocketEvent<{ assignedRole: string; currentRole: string }>(
+            socket3,
+            "role_assigned"
+          ),
+        ]);
+
+        // Phase 2: Transition from role_assignment to night
+        socket1.emit("player_ready");
+        const afterPlayer1 = await waitForSocketEvent<LobbyState>(
+          socket1,
+          "lobby_state"
+        );
+
+        expect(afterPlayer1.gamePhase).toBe("role_assignment");
+        expect(afterPlayer1.players[0].isReady).toBe(true);
+        expect(afterPlayer1.players[1].isReady).toBe(false);
+        expect(afterPlayer1.players[2].isReady).toBe(false);
+
+        socket2.emit("player_ready");
+        await waitForSocketEvent<LobbyState>(socket1, "lobby_state");
+
+        socket3.emit("player_ready");
+        const nightState = await waitForSocketEvent<LobbyState>(
+          socket1,
+          "lobby_state"
+        );
+
+        expect(nightState.gamePhase).toBe("night");
+        expect(nightState.players[0].isReady).toBe(true);
+        expect(nightState.players[1].isReady).toBe(true);
+        expect(nightState.players[2].isReady).toBe(true);
+      } finally {
+        socket1.disconnect();
+        socket2?.disconnect();
+        socket3?.disconnect();
+        await new Promise((resolve) => setTimeout(resolve, 100));
       }
     });
   });

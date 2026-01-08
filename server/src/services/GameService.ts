@@ -1,4 +1,5 @@
 import { GameState, LobbyState, PlayerGameState } from "../types/lobby.types";
+import { allPlayersReady, resetPlayersReadiness } from "../utils/playerState";
 
 export class GameService {
   private games: Map<string, GameState> = new Map();
@@ -13,6 +14,7 @@ export class GameService {
   }
 
   createGame(lobby: LobbyState): GameState {
+    resetPlayersReadiness(lobby);
     const shuffledRoles = this.shuffleArray(lobby.selectedRoles);
 
     const playerRoles = new Map<string, PlayerGameState>();
@@ -46,5 +48,13 @@ export class GameService {
   ): PlayerGameState | undefined {
     const game = this.games.get(instanceId);
     return game?.playerRoles.get(userId);
+  }
+
+  startNight(lobby: LobbyState): boolean {
+    if (allPlayersReady(lobby) && lobby.gamePhase === "role_assignment") {
+      lobby.gamePhase = "night";
+      return true;
+    }
+    return false;
   }
 }
