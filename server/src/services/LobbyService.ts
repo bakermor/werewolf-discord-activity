@@ -5,6 +5,7 @@ import {
   Player,
   Role,
 } from "../types/lobby.types";
+import { allPlayersReady } from "../utils/playerState";
 
 export class LobbyService {
   private lobbies: Map<string, LobbyState> = new Map();
@@ -80,34 +81,17 @@ export class LobbyService {
     return lobby.selectedRoles.length === lobby.players.length + 3;
   }
 
-  resetPlayersReadiness(lobby: LobbyState): void {
-    lobby.players.forEach((player) => {
-      player.isReady = false;
-    });
-  }
-
-  allPlayersReady(lobby: LobbyState): boolean {
-    if (lobby.players.length === 0) return false;
-    return lobby.players.every((p) => p.isReady === true);
-  }
-
   isValidPlayerCount(lobby: LobbyState): boolean {
     return (
       lobby.players.length >= MIN_PLAYERS && lobby.players.length <= MAX_PLAYERS
     );
   }
 
-  setPlayerReady(lobby: LobbyState, userId: string): Player | undefined {
-    const player = lobby.players.find((p) => p.userId === userId);
-    if (player) {
-      player.isReady = true;
-    }
-    return player;
-  }
-
-  startGame(lobby: LobbyState): void {
-    if (this.allPlayersReady(lobby) && lobby.gamePhase === "lobby") {
+  startGame(lobby: LobbyState): boolean {
+    if (allPlayersReady(lobby) && lobby.gamePhase === "lobby") {
       lobby.gamePhase = "role_assignment";
+      return true;
     }
+    return false;
   }
 }
