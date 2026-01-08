@@ -25,7 +25,7 @@ function App() {
   }
 
   if (lobby.gamePhase === "role_assignment") {
-    return <RoleAssignmentView />;
+    return <RoleAssignmentView socket={socket} />;
   }
 
   return null;

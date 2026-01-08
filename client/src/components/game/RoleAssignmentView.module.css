@@ -1,22 +1,11 @@
-.textContainer {
-  position: absolute;
-  top: 50%;
-  left: 50%;
-  transform: translate(-50%, -50%);
-  z-index: 10000;
-}
-
-.gameStartText {
-  font-size: 4rem;
-  font-weight: 900;
-  color: #ffffff;
-  text-transform: uppercase;
-  letter-spacing: 0.5rem;
-  margin: 0;
-  text-shadow: 0 0 20px rgba(255, 255, 255, 0.5);
-  clip-path: circle(200% at 50% 50%);
-  opacity: 0;
-  animation: fadeIn 1.2s ease-out 2.5s forwards;
+.container {
+  position: relative;
+  width: 100vw;
+  height: 100vh;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
 }
 
 @keyframes fadeIn {
@@ -28,11 +17,99 @@
   }
 }
 
+@keyframes fadeOut {
+  0% {
+    opacity: 1;
+  }
+  100% {
+    opacity: 0;
+  }
+}
+
+.cardContainer {
+  position: relative;
+  z-index: 10001;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.buttonContainer {
+  position: relative;
+  z-index: 10001;
+  margin-top: 2rem;
+  display: flex;
+  justify-content: center;
+}
+
+.readyButton {
+  padding: 1rem 3rem;
+  font-size: 1.5rem;
+  font-weight: 700;
+  color: #ffffff;
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  border: 2px solid #8b5cf6;
+  border-radius: 0.75rem;
+  cursor: pointer;
+  text-transform: uppercase;
+  letter-spacing: 0.1rem;
+  transition: transform 0.2s ease, box-shadow 0.2s ease;
+  box-shadow: 0 4px 16px rgba(102, 126, 234, 0.4);
+  font-family: "Spectral", serif;
+}
+
+.readyButton:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 6px 20px rgba(102, 126, 234, 0.6);
+}
+
+.readyButton:active {
+  transform: translateY(0);
+}
+
+.waitingContainer {
+  position: relative;
+  z-index: 10001;
+  margin-top: 1rem;
+  display: flex;
+  justify-content: center;
+}
+
+.waitingText {
+  font-size: 1.5rem;
+  font-weight: 600;
+  font-family: "Spectral", serif;
+  color: #ffffff;
+  text-align: center;
+  letter-spacing: 0.05rem;
+  text-shadow: 0 2px 8px rgba(0, 0, 0, 0.6);
+  animation: pulse 2s ease-in-out infinite;
+}
+
+@keyframes pulse {
+  0%,
+  100% {
+    opacity: 0.6;
+  }
+  50% {
+    opacity: 1;
+  }
+}
+
 /* Responsive text sizing */
 @media (max-width: 768px) {
   .gameStartText {
     font-size: 3rem;
     letter-spacing: 0.3rem;
+  }
+
+  .readyButton {
+    padding: 0.875rem 2.5rem;
+    font-size: 1.25rem;
+  }
+
+  .waitingText {
+    font-size: 1.25rem;
   }
 }
 
@@ -40,5 +117,14 @@
   .gameStartText {
     font-size: 2rem;
     letter-spacing: 0.2rem;
+  }
+
+  .readyButton {
+    padding: 0.75rem 2rem;
+    font-size: 1rem;
+  }
+
+  .waitingText {
+    font-size: 1rem;
   }
 }

@@ -59,6 +59,7 @@ const createMockRoleData = () => ({
 describe("App", () => {
   let mockSocket: {
     on: ReturnType<typeof vi.fn>;
+    off: ReturnType<typeof vi.fn>;
     emit: ReturnType<typeof vi.fn>;
     disconnect: ReturnType<typeof vi.fn>;
     id: string;
@@ -70,6 +71,7 @@ describe("App", () => {
     // Create a mock socket with on method
     mockSocket = {
       on: vi.fn(),
+      off: vi.fn(),
       emit: vi.fn(),
       disconnect: vi.fn(),
       id: "mock-socket-id",
@@ -1501,5 +1503,115 @@ describe("App", () => {
       const button = screen.getByRole("button", { name: /START GAME/i });
       expect(button).toBeInTheDocument();
     });
+  });
+
+  describe("Role Assignment View", () => {
+    const createMockAuth = () => ({
+      access_token: "test-token",
+      user: {
+        id: "1234567890123456789",
+        username: "testuser",
+        discriminator: "0001",
+        public_flags: 0,
+      },
+      scopes: ["identify" as const],
+      expires: "2025-12-15T20:00:00.000Z",
+      application: {
+        id: "app-123",
+        name: "Test App",
+        description: "A test Discord app",
+      },
+    });
+
+    it("emits fetch_role on mount", async () => {
+      vi.mocked(setupDiscordSdk).mockResolvedValue({
+        auth: createMockAuth(),
+        lobby: {
+          instanceId: "test-instance-id",
+          createdAt: new Date().toISOString(),
+          players: [
+            {
+              userId: "1234567890123456789",
+              username: "testuser",
+              avatar: "https://example.com/avatar.png",
+              isReady: false,
+            },
+          ],
+          availableRoles: createMockRoleData().availableRoles,
+          selectedRoles: ["werewolf-1", "seer-1", "villager-1"],
+          isRoleConfigValid: true,
+          gamePhase: "role_assignment",
+        },
+        socket: mockSocket as never,
+        playerData: createMockCurrentUser(),
+      });
+
+      render(<App />);
+
+      await waitFor(() => {
+        expect(mockSocket.emit).toHaveBeenCalledWith("fetch_role");
+      });
+    });
+
+    it("emits player_ready when button is clicked", async () => {
+      let roleAssignedCallback: ((data: unknown) => void) | undefined;
+
+      mockSocket.on.mockImplementation(
+        (event: string, callback: (data: unknown) => void) => {
+          if (event === "role_assigned") {
+            roleAssignedCallback = callback;
+          }
+        }
+      );
+
+      vi.mocked(setupDiscordSdk).mockResolvedValue({
+        auth: createMockAuth(),
+        lobby: {
+          instanceId: "test-instance-id",
+          createdAt: new Date().toISOString(),
+          players: [
+            {
+              userId: "1234567890123456789",
+              username: "testuser",
+              avatar: "https://example.com/avatar.png",
+              isReady: false,
+            },
+          ],
+          availableRoles: createMockRoleData().availableRoles,
+          selectedRoles: ["werewolf-1", "seer-1", "villager-1"],
+          isRoleConfigValid: true,
+          gamePhase: "role_assignment",
+        },
+        socket: mockSocket as never,
+        playerData: createMockCurrentUser(),
+      });
+
+      render(<App />);
+
+      await waitFor(() => {
+        expect(mockSocket.emit).toHaveBeenCalledWith("fetch_role");
+      });
+
+      await act(async () => {
+        if (roleAssignedCallback) {
+          roleAssignedCallback({
+            assignedRole: "Werewolf",
+            currentRole: "Werewolf",
+          });
+        }
+      });
+
+      // Wait for READY button to appear after animation (with longer timeout)
+      const readyButton = await waitFor(
+        () => screen.getByRole("button", { name: /READY/i }),
+        { timeout: 5000 }
+      );
+
+      await act(async () => {
+        readyButton.click();
+      });
+
+      expect(mockSocket.emit).toHaveBeenCalledWith("player_ready");
+    }, 10000);
   });
 });
