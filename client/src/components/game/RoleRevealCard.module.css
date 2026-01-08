@@ -1,0 +1,172 @@
+.cardContainer {
+  position: relative;
+  width: 280px;
+  height: 380px;
+  perspective: 1000px;
+  opacity: 0;
+}
+
+.cardInner {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  transform-style: preserve-3d;
+  transition: transform 0.8s;
+}
+
+.sliding {
+  animation: slideDown 1s ease-out forwards;
+}
+
+.flipping {
+  opacity: 1;
+}
+
+.flipping .cardInner {
+  animation: flipCard 0.8s ease-in-out forwards;
+}
+
+.revealed {
+  opacity: 1;
+}
+
+.revealed .cardInner {
+  transform: rotateY(180deg);
+}
+
+@keyframes slideDown {
+  from {
+    transform: translateY(-100vh);
+    opacity: 0;
+  }
+  to {
+    transform: translateY(0);
+    opacity: 1;
+  }
+}
+
+@keyframes flipCard {
+  from {
+    transform: rotateY(0deg);
+  }
+  to {
+    transform: rotateY(180deg);
+  }
+}
+
+.cardFront,
+.cardBack {
+  position: absolute;
+  width: 100%;
+  height: 100%;
+  backface-visibility: hidden;
+  border-radius: 1rem;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.6);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: flex-start;
+  padding: 2rem 1.5rem;
+  box-sizing: border-box;
+}
+
+.cardBack {
+  background: linear-gradient(135deg, #2d2d2d 0%, #1a1a1a 100%);
+  border: 2px solid #444;
+}
+
+.cardFront {
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  border: 2px solid #8b5cf6;
+  transform: rotateY(180deg);
+}
+
+.cardBackPattern {
+  font-size: 8rem;
+  font-weight: 900;
+  color: rgba(255, 255, 255, 0.1);
+  font-family: "Spectral", serif;
+  margin-top: 4rem;
+  text-shadow: 0 0 20px rgba(255, 255, 255, 0.05);
+}
+
+.roleName {
+  font-size: 2rem;
+  font-weight: 700;
+  color: #ffffff;
+  text-transform: uppercase;
+  letter-spacing: 0.1rem;
+  margin-bottom: 2rem;
+  text-align: center;
+  font-family: "Spectral", serif;
+  text-shadow: 0 2px 8px rgba(0, 0, 0, 0.4);
+}
+
+.roleImagePlaceholder {
+  width: 180px;
+  height: 220px;
+  background: rgba(255, 255, 255, 0.15);
+  border-radius: 0.75rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: 2px solid rgba(255, 255, 255, 0.3);
+  backdrop-filter: blur(10px);
+}
+
+.roleInitial {
+  font-size: 6rem;
+  font-weight: 900;
+  color: rgba(255, 255, 255, 0.8);
+  font-family: "Spectral", serif;
+  text-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+}
+
+@media (max-width: 768px) {
+  .cardContainer {
+    width: 240px;
+    height: 320px;
+  }
+
+  .roleName {
+    font-size: 1.5rem;
+  }
+
+  .roleImagePlaceholder {
+    width: 150px;
+    height: 180px;
+  }
+
+  .roleInitial {
+    font-size: 5rem;
+  }
+
+  .cardBackPattern {
+    font-size: 6rem;
+  }
+}
+
+@media (max-width: 480px) {
+  .cardContainer {
+    width: 200px;
+    height: 280px;
+  }
+
+  .roleName {
+    font-size: 1.25rem;
+    margin-bottom: 1.5rem;
+  }
+
+  .roleImagePlaceholder {
+    width: 120px;
+    height: 150px;
+  }
+
+  .roleInitial {
+    font-size: 4rem;
+  }
+
+  .cardBackPattern {
+    font-size: 5rem;
+  }
+}
