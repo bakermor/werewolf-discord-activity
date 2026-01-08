@@ -1,4 +1,5 @@
 import styles from "./App.module.css";
+import { NightView } from "./components/game/NightView";
 import { RoleAssignmentView } from "./components/game/RoleAssignmentView";
 import { LobbyView } from "./components/lobby/LobbyView";
 import { useLobby } from "./hooks/useLobby";
@@ -26,6 +27,10 @@ function App() {
 
   if (lobby.gamePhase === "role_assignment") {
     return <RoleAssignmentView socket={socket} />;
+  }
+
+  if (lobby.gamePhase === "night") {
+    return <NightView socket={socket} />;
   }
 
   return null;
