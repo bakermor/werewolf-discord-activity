@@ -19,7 +19,7 @@
   "license": "MIT",
   "dependencies": {
     "express": "^5.2.1",
-    "pnpm": "^10.27.0"
+    "pnpm": "^10.28.2"
   },
   "type": "module",
   "devDependencies": {
